@@ -26,7 +26,15 @@ pub trait Game {
     /// `seed`.
     fn new_initial_state(&self, seed: u64) -> Self::State;
 
-    /// Returns the number of real seats (excluding the chance pseudo-player).
+    /// Returns the number of seats in this match: the fixed roster, seats
+    /// `0..num_players`, excluding the chance pseudo-player.
+    ///
+    /// A constant property of the configured match, not a live count and not a
+    /// capacity. It does not shrink when a player is eliminated (an eliminated
+    /// seat simply stops appearing in [`Self::active_players`] and has no legal
+    /// actions). "Who owes a decision right now" is [`Self::active_players`];
+    /// the seats valid for [`Self::reward`] and [`Self::legal_actions`] are
+    /// `0..num_players`.
     fn num_players(&self) -> usize;
 
     /// Returns the players who owe a decision right now.

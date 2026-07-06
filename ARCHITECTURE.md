@@ -512,8 +512,8 @@ turnbase/
   crates/
     core/                     # crate `turnbase`: Game trait, ActivePlayers, RNG, Tier-2 triggers
     bots/                     # crate `turnbase-bots`: RandomBot, minimax/alpha-beta, MCTS helpers
-  examples/
-    tic_tac_toe.rs            # reference game validating the trait design
+  examples/                   # crate `examples` (publish = false): reference games
+    src/tic_tac_toe.rs        # reference game validating the trait design
 ```
 
 Matches the `rg` house style: workspace-level lints (`clippy::all`/`pedantic`/

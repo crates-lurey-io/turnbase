@@ -3,6 +3,13 @@
 version = 4
 
 [[package]]
+name = "examples"
+version = "0.1.0"
+dependencies = [
+ "turnbase",
+]
+
+[[package]]
 name = "turnbase"
 version = "0.1.0"
 
