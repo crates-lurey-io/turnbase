@@ -5,6 +5,7 @@
 
 mod active;
 mod chance;
+mod effects;
 mod error;
 mod game;
 mod player;
@@ -16,6 +17,7 @@ mod serde_roundtrip;
 
 pub use active::ActivePlayers;
 pub use chance::sample_chance;
+pub use effects::{EffectSystem, MAX_EFFECTS, resolve_effects};
 pub use error::Error;
 pub use game::{Game, Reversible};
 pub use player::PlayerId;
