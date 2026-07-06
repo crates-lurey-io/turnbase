@@ -510,8 +510,8 @@ for free from `legal_actions` returning a singleton.
 turnbase/
   Cargo.toml                 # workspace root
   crates/
-    turnbase-core/            # the engine: Game trait, ActivePlayers, RNG, Tier-2 triggers
-    turnbase-bots/            # RandomBot, minimax/alpha-beta, MCTS helpers
+    core/                     # crate `turnbase`: Game trait, ActivePlayers, RNG, Tier-2 triggers
+    bots/                     # crate `turnbase-bots`: RandomBot, minimax/alpha-beta, MCTS helpers
   examples/
     tic_tac_toe.rs            # reference game validating the trait design
 ```
