@@ -11,3 +11,7 @@ workspace = true
 
 [dependencies]
 turnbase = { path = "../core" }
+
+[dev-dependencies]
+examples = { path = "../../examples" }
+proptest = "1"

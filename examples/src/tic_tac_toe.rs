@@ -6,7 +6,7 @@
 
 use std::fmt;
 
-use turnbase::{ActivePlayers, Game, PlayerId};
+use turnbase::{ActivePlayers, Game, PlayerId, Reversible};
 
 /// One square of the board.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
@@ -154,6 +154,27 @@ impl Game for TicTacToe {
 
     fn view(&self, state: &Self::State, _viewer: Option<PlayerId>) -> Self::View {
         state.clone()
+    }
+}
+
+impl Reversible for TicTacToe {
+    /// The cell that was filled; reversing clears it and decrements the count.
+    /// There is no RNG to rewind (tic-tac-toe is deterministic).
+    type UndoRecord = Move;
+
+    fn apply_undoable(
+        &self,
+        state: &mut Self::State,
+        player: PlayerId,
+        action: Self::Action,
+    ) -> Self::UndoRecord {
+        self.apply(state, player, action);
+        action
+    }
+
+    fn undo(&self, state: &mut Self::State, record: Self::UndoRecord) {
+        state.cells[record.0 as usize] = Cell::Empty;
+        state.marks -= 1;
     }
 }
 
