@@ -5,10 +5,14 @@
 
 mod active;
 mod error;
+mod game;
 mod player;
 mod rng;
+mod state;
 
 pub use active::ActivePlayers;
 pub use error::Error;
+pub use game::{Game, Reversible};
 pub use player::PlayerId;
 pub use rng::Prng;
+pub use state::{PlayerView, State};
