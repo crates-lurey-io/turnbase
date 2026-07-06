@@ -59,6 +59,35 @@ pub trait Game {
         self.legal_actions(state, player).contains(action)
     }
 
+    /// Returns the probability distribution over chance outcomes while
+    /// [`PlayerId::CHANCE`] is active: each possible outcome action paired with
+    /// its probability. The probabilities should sum to 1.
+    ///
+    /// Defaults to uniform over `legal_actions(state, CHANCE)`. Override for
+    /// non-uniform chance (loaded dice, weighted decks). Mirrors OpenSpiel's
+    /// `chance_outcomes`. The committed outcome is chosen by a chance sampler
+    /// (see `sample_chance`) using a generator owned by the driver, distinct
+    /// from any per-state generator used for implicit rolls inside `apply`.
+    ///
+    /// Returns a materialized `Vec`, not an iterator, because callers pass over
+    /// it more than once — summing the weights and then sampling, or
+    /// enumerating every outcome for expectiminimax. Chance branching is small,
+    /// so the allocation is negligible (this matches OpenSpiel's materialized
+    /// `ChanceOutcomes`).
+    fn chance_outcomes(&self, state: &Self::State) -> Vec<(Self::Action, f64)> {
+        let actions = self.legal_actions(state, PlayerId::CHANCE);
+        if actions.is_empty() {
+            return Vec::new();
+        }
+        // Outcome counts are small; the reciprocal is exact enough as a weight.
+        #[allow(clippy::cast_precision_loss)]
+        let probability = 1.0 / actions.len() as f64;
+        actions
+            .into_iter()
+            .map(|action| (action, probability))
+            .collect()
+    }
+
     /// Advances `state` in place by applying `player`'s `action`.
     ///
     /// Assumes the action is legal for an active player; callers that want

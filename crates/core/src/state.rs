@@ -64,6 +64,24 @@ impl<P, Q> State<P, Q> {
         self.private.get_mut(&player)
     }
 
+    /// Removes and returns `player`'s private zone, if any.
+    ///
+    /// Needed to reverse a deal exactly: undoing a chance move that dealt a
+    /// private card must leave no stale entry behind, so a `Reversible::undo`
+    /// calls this to drop the card it handed out.
+    ///
+    /// # Example
+    /// ```
+    /// use turnbase::{PlayerId, State};
+    /// let mut state: State<(), u8> = State::new((), 0);
+    /// state.insert_private(PlayerId::new(0), 7); // deal
+    /// assert_eq!(state.remove_private(PlayerId::new(0)), Some(7)); // undo the deal
+    /// assert_eq!(state.private(PlayerId::new(0)), None);
+    /// ```
+    pub fn remove_private(&mut self, player: PlayerId) -> Option<Q> {
+        self.private.remove(&player)
+    }
+
     /// Returns the match's generator.
     #[must_use]
     pub const fn rng(&self) -> &Prng {

@@ -1,0 +1,3 @@
+# Proper nouns that clippy::doc_markdown would otherwise flag as un-backticked
+# code. ".." keeps clippy's built-in list.
+doc-valid-idents = ["OpenSpiel", "PettingZoo", "ISMCTS", "GGPO", ".."]

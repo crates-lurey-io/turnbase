@@ -12,3 +12,6 @@ workspace = true
 
 [dependencies]
 turnbase = { path = "../crates/core" }
+
+[dev-dependencies]
+proptest = "1"

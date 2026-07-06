@@ -4,6 +4,7 @@
 //! `ARCHITECTURE.md` at the workspace root for the design and its rationale.
 
 mod active;
+mod chance;
 mod error;
 mod game;
 mod player;
@@ -11,6 +12,7 @@ mod rng;
 mod state;
 
 pub use active::ActivePlayers;
+pub use chance::sample_chance;
 pub use error::Error;
 pub use game::{Game, Reversible};
 pub use player::PlayerId;

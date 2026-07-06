@@ -4,6 +4,8 @@
 //! examples. This crate is not published (`publish = false`); it exists for
 //! tests, benchmarks, and demos across the workspace.
 
+pub mod high_card;
 pub mod tic_tac_toe;
 
+pub use high_card::HighCard;
 pub use tic_tac_toe::{Board, Cell, Move, TicTacToe};
