@@ -12,6 +12,7 @@
 ///
 /// This is not cryptographically secure and must not be used for security.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Prng {
     state: u64,
 }

@@ -7,6 +7,8 @@
 /// players are numbered from 0; games map their own seat concepts onto these
 /// indices.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(transparent))]
 pub struct PlayerId(u32);
 
 impl PlayerId {

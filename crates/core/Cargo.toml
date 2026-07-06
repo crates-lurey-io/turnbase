@@ -9,4 +9,12 @@ repository.workspace = true
 [lints]
 workspace = true
 
+[features]
+# Opt-in Serialize/Deserialize for the public types; default build stays dep-free.
+serde = ["dep:serde"]
+
 [dependencies]
+serde = { version = "1", features = ["derive"], optional = true }
+
+[dev-dependencies]
+serde_json = "1"

@@ -11,6 +11,9 @@ mod player;
 mod rng;
 mod state;
 
+#[cfg(all(test, feature = "serde"))]
+mod serde_roundtrip;
+
 pub use active::ActivePlayers;
 pub use chance::sample_chance;
 pub use error::Error;

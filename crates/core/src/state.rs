@@ -19,6 +19,7 @@ use crate::{PlayerId, Prng};
 /// record can restore the stream position (see `ARCHITECTURE.md`). Games with
 /// their own `State` type should embed a [`Prng`] the same way.
 #[derive(Clone, PartialEq, Eq, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct State<P, Q> {
     public: P,
     private: BTreeMap<PlayerId, Q>,
@@ -114,6 +115,7 @@ impl<P: Clone, Q: Clone> State<P, Q> {
 /// The standard observation produced by [`State::view_for`]: the public zone
 /// and the viewer's own private zone, if any.
 #[derive(Clone, PartialEq, Eq, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct PlayerView<P, Q> {
     /// The public zone, visible to everyone.
     pub public: P,
