@@ -56,6 +56,10 @@ pub enum Action {
     /// Claim Captain, take 2 coins. Challengeable, blockable by Captain or
     /// Ambassador.
     Steal,
+    /// Claim Ambassador, draw two and choose which to keep. Challengeable.
+    Exchange,
+    /// Return the card at this pool index to the deck (during an exchange).
+    Return(usize),
     /// Allow the pending action or block to stand.
     Pass,
     /// Challenge the pending claim.
@@ -96,6 +100,11 @@ enum Phase {
     Lose {
         who: u8,
         resume: Resume,
+    },
+    ExchangeReturn {
+        player: u8,
+        pool: Vec<Character>,
+        returns_left: u8,
     },
     GameOver,
 }
@@ -226,7 +235,58 @@ fn resolve_action(state: &mut CoupState, action: Action, actor: u8) {
                 resume: Resume::EndTurn,
             };
         }
+        Action::Exchange => {
+            // Draw up to two, pool them with the current hand, then return as
+            // many as were drawn. The hand is emptied into the pool for the
+            // duration of the decision.
+            let mut pool = std::mem::take(&mut state.hands[actor as usize]);
+            let mut drawn = 0u8;
+            for _ in 0..2 {
+                if let Some(card) = state.deck.pop() {
+                    pool.push(card);
+                    drawn += 1;
+                }
+            }
+            if drawn == 0 {
+                state.hands[actor as usize] = pool;
+                state.end_turn();
+            } else {
+                state.phase = Phase::ExchangeReturn {
+                    player: actor,
+                    pool,
+                    returns_left: drawn,
+                };
+            }
+        }
         _ => state.end_turn(),
+    }
+}
+
+fn apply_exchange_return(
+    state: &mut CoupState,
+    player: u8,
+    mut pool: Vec<Character>,
+    returns_left: u8,
+    action: Action,
+) {
+    let Action::Return(index) = action else {
+        return;
+    };
+    if index >= pool.len() {
+        return;
+    }
+    state.deck.push(pool.remove(index));
+    let remaining = returns_left - 1;
+    if remaining == 0 {
+        state.rng.shuffle(&mut state.deck);
+        state.hands[player as usize] = pool;
+        state.end_turn();
+    } else {
+        state.phase = Phase::ExchangeReturn {
+            player,
+            pool,
+            returns_left: remaining,
+        };
     }
 }
 
@@ -282,6 +342,16 @@ fn apply_choose(state: &mut CoupState, action: Action) {
                     actor,
                     claim: Some(Character::Captain),
                     block_options: vec![Character::Captain, Character::Ambassador],
+                },
+            };
+        }
+        Action::Exchange => {
+            state.phase = Phase::Respond {
+                pending: Pending {
+                    action,
+                    actor,
+                    claim: Some(Character::Ambassador),
+                    block_options: Vec::new(),
                 },
             };
         }
@@ -425,6 +495,7 @@ impl Game for Coup {
             Phase::Respond { pending } => opponent(pending.actor),
             Phase::RespondToBlock { pending, .. } => pending.actor,
             Phase::Lose { who, .. } => *who,
+            Phase::ExchangeReturn { player, .. } => *player,
             Phase::GameOver => return ActivePlayers::none(),
         };
         ActivePlayers::one(PlayerId::new(u32::from(seat)))
@@ -443,6 +514,7 @@ impl Game for Coup {
                     Action::ForeignAid,
                     Action::Tax,
                     Action::Steal,
+                    Action::Exchange,
                 ];
                 if coins >= 3 {
                     actions.push(Action::Assassinate);
@@ -469,6 +541,9 @@ impl Game for Coup {
                 .len())
                 .map(Action::Lose)
                 .collect(),
+            Phase::ExchangeReturn { player, pool, .. } if seat == u32::from(*player) => {
+                (0..pool.len()).map(Action::Return).collect()
+            }
             _ => Vec::new(),
         }
     }
@@ -485,6 +560,11 @@ impl Game for Coup {
                 apply_respond_block(state, &pending, blocker, block_as, action);
             }
             Phase::Lose { who, resume } => apply_lose(state, who, resume, action),
+            Phase::ExchangeReturn {
+                player,
+                pool,
+                returns_left,
+            } => apply_exchange_return(state, player, pool, returns_left, action),
             Phase::GameOver => {}
         }
     }
@@ -669,6 +749,37 @@ mod tests {
         game.apply(&mut state, P0, Pass);
         assert_eq!(state.coins(0), 2);
         assert_eq!(state.coins(1), 5);
+    }
+
+    #[test]
+    fn exchange_unchallenged_keeps_hand_size_and_deck_size() {
+        let game = Coup;
+        let mut state = rigged([vec![Ambassador, Captain], vec![Duke, Contessa]], [2, 2]);
+        let deck_before = game.view(&state, None).deck_size;
+        game.apply(&mut state, P0, Action::Exchange);
+        game.apply(&mut state, P1, Pass); // draws two -> ExchangeReturn
+        assert_eq!(game.active_players(&state).iter().next(), Some(P0));
+        game.apply(&mut state, P0, Action::Return(0));
+        game.apply(&mut state, P0, Action::Return(0));
+        assert_eq!(state.influence(0), 2, "hand size restored");
+        assert_eq!(
+            game.view(&state, None).deck_size,
+            deck_before,
+            "deck size restored"
+        );
+        assert_eq!(state.current(), 1);
+    }
+
+    #[test]
+    fn exchange_bluff_caught_costs_an_influence() {
+        let game = Coup;
+        // P0 claims Ambassador without holding one.
+        let mut state = rigged([vec![Captain, Duke], vec![Contessa, Assassin]], [2, 2]);
+        game.apply(&mut state, P0, Action::Exchange);
+        game.apply(&mut state, P1, Challenge);
+        game.apply(&mut state, P0, Lose(0));
+        assert_eq!(state.influence(0), 1);
+        assert_eq!(state.current(), 1);
     }
 
     #[test]
