@@ -521,6 +521,47 @@ Matches the `rg` house style: workspace-level lints (`clippy::all`/`pedantic`/
 custom error enums instead of thiserror/anyhow, `mod tests` inline per file,
 no unsafe, no async.
 
+## Composability: optional helper layers, not a flow framework
+
+Building five structurally different reference games (tic-tac-toe, high card,
+rock-paper-scissors, minion battle, and 2-4 player Coup) required no changes to
+the `Game` trait. Even Coup's nested challenge/block response windows fell out
+of `active_players`/`legal_actions` plus a `pending`/`resume` struct on the
+game's own state — no engine machinery. The minimal core is the right bet
+(OpenSpiel's philosophy), and the flow-framework alternative (boardgame.io's
+phases/turns/stages) carries a documented complexity tax: phases were "a
+frequent source of confusion" in its own words, with recurring edge-case bugs
+(silent `endTurn` discards, stage/turn interaction surprises). Turnbase
+deliberately does not adopt one — `active_players` computed from your own state
+already gives flow control without a framework.
+
+Where common shapes recur, the answer is optional, layered helpers a game opts
+into, never core trait changes. The Tier-2 `EffectSystem` is the first such
+layer. The others, in priority order:
+
+- **Zones (`Pile<T>`)**: an ordered pile (deck, hand, discard) with a
+  deterministic `shuffle(&mut Prng)`, `draw`/`put`/`insert`/`remove`, and — with
+  `PartialEq` — `contains`/`position`/`remove_item`. Every card game needs
+  deck/hand management, and the shuffle/draw/redraw code is the most error-prone
+  thing to hand-roll (a card-conservation invariant test caught a transient bug
+  during Coup's development). This mirrors reusable toolkits like `gametools`
+  and Veggerby.Boards' deck-building zones. high card and Coup use it for their
+  decks.
+
+- **Priority windows (the deferred Tier-3)**: Coup's "go around the living
+  seats, each may pass or object, first objection resolves" queue is the
+  re-openable MTG-style priority stack in miniature. A reusable priority-passing
+  helper serves both bounded response windows and the eventual Tier-3 stack.
+
+- **Structural decomposition (convention, not code)**: following RLCard's
+  Dealer/Round/Judger split, games read clearest decomposed into setup and
+  chance (the deck), flow (`active_players` from a phase tag), and scoring
+  (`reward`). This is guidance, not machinery.
+
+The principle: keep the core minimal and deterministic; ship composability as
+opt-in components *under* the game — the way a game toolkit ships piles, dice,
+and resources — not as a flow framework *over* it.
+
 ## Future: scripting / effect-authoring DSL
 
 Deferred until 2-3 real games exist on the trait-based core and gaps are
