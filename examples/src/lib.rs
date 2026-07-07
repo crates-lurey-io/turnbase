@@ -7,11 +7,13 @@
 pub mod coup;
 pub mod high_card;
 pub mod minion_battle;
+pub mod risk;
 pub mod rock_paper_scissors;
 pub mod tic_tac_toe;
 
 pub use coup::Coup;
 pub use high_card::HighCard;
 pub use minion_battle::MinionBattle;
+pub use risk::Risk;
 pub use rock_paper_scissors::RockPaperScissors;
 pub use tic_tac_toe::{Board, Cell, Move, TicTacToe};

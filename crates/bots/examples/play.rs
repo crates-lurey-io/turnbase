@@ -6,7 +6,7 @@
 //!
 //! Usage:
 //!   cargo run -p turnbase-bots --example play -- <game> [--seed N] [--manual [seats]] [--step]
-//!   games:   coup | ttt | rps | highcard | minions
+//!   games:   coup | ttt | rps | highcard | minions | risk
 //!   --manual with no value puts you in seat 1; --manual 0 or --manual 0,1 picks seats.
 //!
 //! This is a dev tool, so pedantic/nursery ergonomics (unwrap, casts, I/O) are
@@ -17,7 +17,8 @@ use std::fmt::Debug;
 use std::io::{self, Write};
 
 use examples::coup::CoupState;
-use examples::{Coup, HighCard, MinionBattle, RockPaperScissors, TicTacToe};
+use examples::risk::RiskState;
+use examples::{Coup, HighCard, MinionBattle, Risk, RockPaperScissors, TicTacToe};
 use turnbase::{Game, PlayerId, Prng, sample_chance};
 use turnbase_bots::{Bot, RandomBot};
 
@@ -42,7 +43,12 @@ fn main() {
         "rps" => run(&RockPaperScissors, &opts, viewer, |s, _| format!("{s:?}")),
         "highcard" => run(&HighCard::default(), &opts, viewer, |s, _| format!("{s:?}")),
         "minions" => run(&MinionBattle, &opts, viewer, |s, _| format!("{s:?}")),
-        other => eprintln!("unknown game: {other} (try: coup | ttt | rps | highcard | minions)"),
+        "risk" => run(&Risk::new(opts.players), &opts, viewer, |s, _| {
+            render_risk(s)
+        }),
+        other => {
+            eprintln!("unknown game: {other} (try: coup | ttt | rps | highcard | minions | risk)");
+        }
     }
 }
 
@@ -76,7 +82,7 @@ fn parse_options(args: &[String]) -> Options {
                     .get(i)
                     .and_then(|s| s.parse().ok())
                     .unwrap_or(2)
-                    .clamp(2, 4);
+                    .clamp(2, 6);
             }
             "--step" => opts.step = true,
             _ => {}
@@ -214,4 +220,20 @@ fn render_coup(state: &CoupState, viewer: Option<PlayerId>) -> String {
         format!("P{}", state.current())
     };
     format!("{}  | {turn}", seats.join("  "))
+}
+
+/// Compact Risk line: each territory as `Name:ownerxarmies`, then whose phase.
+fn render_risk(state: &RiskState) -> String {
+    let map = (0..examples::risk::TERRITORIES)
+        .map(|t| {
+            format!(
+                "{}:P{}x{}",
+                examples::risk::NAMES[t],
+                state.owner(t),
+                state.armies(t)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+    format!("{map}  | P{} {:?}", state.current(), state.phase())
 }
