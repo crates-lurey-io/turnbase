@@ -652,6 +652,68 @@ impl Game for Coup {
     }
 }
 
+impl turnbase::Determinize for Coup {
+    /// Resamples the cards the observer cannot see. Their own hand, every
+    /// revealed (lost) card, and the exchange pool when they own it are known
+    /// and left untouched; the other seats' hidden hands, a foreign exchange
+    /// pool, and the deck are refilled from the unseen cards. Card counts (and
+    /// so the observer's whole `view`) are preserved exactly.
+    fn determinize(&self, state: &CoupState, observer: PlayerId, rng: &mut Prng) -> CoupState {
+        let obs = observer.index() as usize;
+        let mut next = state.clone();
+
+        // Start from the full deck (three of each) and remove what's known.
+        let mut bag: Vec<Character> = CHARACTERS.iter().flat_map(|&c| [c, c, c]).collect();
+        for pile in &next.lost {
+            remove_each(&mut bag, pile);
+        }
+        remove_each(&mut bag, &next.hands[obs]);
+        let owns_pool = matches!(
+            &next.phase,
+            Phase::ExchangeReturn { player, .. } if *player as usize == obs
+        );
+        if owns_pool && let Phase::ExchangeReturn { pool, .. } = &next.phase {
+            remove_each(&mut bag, pool);
+        }
+
+        // Deal the unseen cards back into the hidden slots.
+        rng.shuffle(&mut bag);
+        for seat in 0..next.hands.len() {
+            if seat != obs {
+                let count = next.hands[seat].len();
+                next.hands[seat] = deal(&mut bag, count);
+            }
+        }
+        if !owns_pool && let Phase::ExchangeReturn { pool, .. } = &mut next.phase {
+            let count = pool.len();
+            *pool = deal(&mut bag, count);
+        }
+        let deck_size = next.deck.len();
+        next.deck = Pile::from_items(deal(&mut bag, deck_size));
+        next
+    }
+}
+
+/// Removes one copy of each card in `cards` from `bag`.
+fn remove_each(bag: &mut Vec<Character>, cards: &[Character]) {
+    for card in cards {
+        if let Some(index) = bag.iter().position(|c| c == card) {
+            bag.swap_remove(index);
+        }
+    }
+}
+
+/// Removes and returns `count` cards from the top of `bag`.
+fn deal(bag: &mut Vec<Character>, count: usize) -> Vec<Character> {
+    let mut dealt = Vec::with_capacity(count);
+    for _ in 0..count {
+        if let Some(card) = bag.pop() {
+            dealt.push(card);
+        }
+    }
+    dealt
+}
+
 fn choose_actions(state: &CoupState, seat: u8) -> Vec<Action> {
     let coins = state.coins[seat as usize];
     let targets = responders(state, seat);
@@ -705,7 +767,7 @@ mod tests {
     use super::Action::{self, Block, Challenge, Exchange, Lose, Pass, Steal, Tax};
     use super::{CHARACTERS, Character, Coup, CoupState, Phase};
     use Character::{Ambassador, Assassin, Captain, Contessa, Duke};
-    use turnbase::{Game, Pile, PlayerId, Prng};
+    use turnbase::{Determinize, Game, Pile, PlayerId, Prng};
 
     const P0: PlayerId = PlayerId::new(0);
     const P1: PlayerId = PlayerId::new(1);
@@ -784,6 +846,42 @@ mod tests {
             assert!(steps < 20_000, "seed {seed} did not terminate");
         }
         state
+    }
+
+    #[test]
+    fn determinize_stays_in_the_information_set() {
+        // Every determinization must preserve exactly what the observer sees
+        // (so their `view` is unchanged) and conserve all fifteen cards. Walk
+        // random games and check both for every observer at every decision.
+        let game = Coup::new(3);
+        for seed in 0..20 {
+            let mut state = game.new_initial_state(seed);
+            let mut walk = Prng::new(seed ^ 0x1234);
+            let mut resample = Prng::new(seed ^ 0x9999);
+            let mut steps = 0;
+            while !game.is_terminal(&state) {
+                for obs in 0..game.num_players() {
+                    let observer = PlayerId::new(u32::try_from(obs).unwrap());
+                    let world = game.determinize(&state, observer, &mut resample);
+                    assert_eq!(
+                        game.view(&world, Some(observer)),
+                        game.view(&state, Some(observer)),
+                        "determinization changed observer {obs}'s view (seed {seed})"
+                    );
+                    assert_eq!(
+                        card_counts(&world),
+                        [3; 5],
+                        "determinization did not conserve cards (seed {seed})"
+                    );
+                }
+                let player = game.active_players(&state).iter().next().unwrap();
+                let actions = game.legal_actions(&state, player);
+                let index = usize::try_from(walk.below(actions.len() as u64)).unwrap();
+                game.apply(&mut state, player, actions[index]);
+                steps += 1;
+                assert!(steps < 20_000, "seed {seed} did not terminate");
+            }
+        }
     }
 
     #[test]

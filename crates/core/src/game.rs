@@ -1,6 +1,7 @@
-//! The core `Game` trait and its optional make/unmake extension.
+//! The core `Game` trait and its optional make/unmake and determinize
+//! extensions.
 
-use crate::{ActivePlayers, Error, PlayerId};
+use crate::{ActivePlayers, Error, PlayerId, Prng};
 
 /// A turn-based game defined as pure functions from state and action to new
 /// state.
@@ -176,6 +177,28 @@ pub trait Reversible: Game {
     /// Reverses the move that produced `record`, restoring `state` (and its
     /// generator position) to what it was before.
     fn undo(&self, state: &mut Self::State, record: Self::UndoRecord);
+}
+
+/// Opt-in resampling of hidden information for imperfect-information search.
+///
+/// The imperfect-info analog of [`Reversible`]: an optional capability a game
+/// implements to unlock a bot that could not otherwise work. A perfect-info
+/// game implements it trivially as `state.clone()`; a hidden-info game randomly
+/// fills in what `observer` cannot see. Information-set MCTS (`Ismcts`) calls
+/// this once per simulation to search over sampled worlds.
+///
+/// The one invariant that makes search sound: the result must be **consistent
+/// with `observer`'s information set**. Everything `observer` can already see is
+/// preserved exactly (so [`Game::view`] for `observer` is unchanged); only the
+/// cards, tiles, or rolls they cannot see are resampled. Draw the resampling
+/// randomness from `rng`, not from the state, so repeated calls explore
+/// different worlds. This is the game-specific knowledge that a generic engine
+/// cannot supply (mirroring OpenSpiel's `ResampleFromInfostate`), which is why
+/// it is a trait a game opts into rather than a core method.
+pub trait Determinize: Game {
+    /// Returns a random full state consistent with what `observer` can see in
+    /// `state` (a determinization), resampling hidden information from `rng`.
+    fn determinize(&self, state: &Self::State, observer: PlayerId, rng: &mut Prng) -> Self::State;
 }
 
 #[cfg(test)]

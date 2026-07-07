@@ -20,7 +20,7 @@ pub use active::ActivePlayers;
 pub use chance::sample_chance;
 pub use effects::{EffectSystem, MAX_EFFECTS, resolve_effects};
 pub use error::Error;
-pub use game::{Game, Reversible};
+pub use game::{Determinize, Game, Reversible};
 pub use pile::Pile;
 pub use player::PlayerId;
 pub use rng::Prng;

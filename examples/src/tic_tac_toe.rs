@@ -6,7 +6,7 @@
 
 use std::fmt;
 
-use turnbase::{ActivePlayers, Game, PlayerId, Reversible};
+use turnbase::{ActivePlayers, Determinize, Game, PlayerId, Prng, Reversible};
 
 /// One square of the board.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
@@ -175,6 +175,19 @@ impl Reversible for TicTacToe {
     fn undo(&self, state: &mut Self::State, record: Self::UndoRecord) {
         state.cells[record.0 as usize] = Cell::Empty;
         state.marks -= 1;
+    }
+}
+
+impl Determinize for TicTacToe {
+    /// Nothing is hidden, so a determinization is just the true state. Lets a
+    /// hidden-info bot (`Ismcts`) run on tic-tac-toe as a baseline.
+    fn determinize(
+        &self,
+        state: &Self::State,
+        _observer: PlayerId,
+        _rng: &mut Prng,
+    ) -> Self::State {
+        state.clone()
     }
 }
 
