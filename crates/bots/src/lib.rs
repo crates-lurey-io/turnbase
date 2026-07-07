@@ -5,10 +5,12 @@
 
 use turnbase::{Game, PlayerId};
 
+mod ismcts;
 mod mcts;
 mod minimax;
 mod random;
 
+pub use ismcts::Ismcts;
 pub use mcts::Mcts;
 pub use minimax::Minimax;
 pub use random::RandomBot;
