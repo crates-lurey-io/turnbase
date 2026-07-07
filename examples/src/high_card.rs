@@ -7,7 +7,7 @@
 
 use std::cmp::Ordering;
 
-use turnbase::{ActivePlayers, Game, PlayerId, PlayerView, Reversible, State};
+use turnbase::{ActivePlayers, Game, Pile, PlayerId, PlayerView, Reversible, State};
 
 /// Rules for a high-card match over a `deck_size`-card deck.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -29,8 +29,7 @@ fn deal(state: &mut HighCardState, action: Action) -> Undo {
     let index = state
         .public()
         .deck
-        .iter()
-        .position(|&c| c == card)
+        .position(&card)
         .expect("a dealt card must be in the deck");
     let recipient = PlayerId::new(u32::from(state.public().dealt));
     state.public_mut().deck.remove(index);
@@ -52,14 +51,14 @@ impl Default for HighCard {
 /// Public table state: the remaining deck and how many cards have been dealt.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Table {
-    deck: Vec<u8>,
+    deck: Pile<u8>,
     dealt: u8,
 }
 
 impl Table {
     /// The cards still in the deck, in the order chance draws consider them.
     #[must_use]
-    pub const fn deck(&self) -> &[u8] {
+    pub fn deck(&self) -> &[u8] {
         self.deck.as_slice()
     }
 

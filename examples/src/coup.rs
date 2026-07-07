@@ -17,7 +17,7 @@
 //! challenged by anyone but the blocker. Challenge priority is sequentialized
 //! into turn order (see `.matan/coup-plan.md`).
 
-use turnbase::{ActivePlayers, Game, PlayerId, Prng};
+use turnbase::{ActivePlayers, Game, Pile, PlayerId, Prng};
 
 /// A character card. The deck holds three of each.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -121,7 +121,7 @@ pub struct CoupState {
     coins: Vec<u8>,
     hands: Vec<Vec<Character>>,
     lost: Vec<Vec<Character>>,
-    deck: Vec<Character>,
+    deck: Pile<Character>,
     current: u8,
     seats: u8,
     phase: Phase,
@@ -274,9 +274,9 @@ fn redraw(state: &mut CoupState, seat: u8, card: Character) {
     let hand = &mut state.hands[seat as usize];
     if let Some(pos) = hand.iter().position(|&c| c == card) {
         hand.remove(pos);
-        state.deck.push(card);
-        state.rng.shuffle(&mut state.deck);
-        if let Some(drawn) = state.deck.pop() {
+        state.deck.put(card);
+        state.deck.shuffle(&mut state.rng);
+        if let Some(drawn) = state.deck.draw() {
             state.hands[seat as usize].push(drawn);
         }
     }
@@ -321,7 +321,7 @@ fn start_exchange(state: &mut CoupState, actor: u8) {
     let mut pool = std::mem::take(&mut state.hands[actor as usize]);
     let mut drawn = 0u8;
     for _ in 0..2 {
-        if let Some(card) = state.deck.pop() {
+        if let Some(card) = state.deck.draw() {
             pool.push(card);
             drawn += 1;
         }
@@ -351,10 +351,10 @@ fn apply_exchange_return(
     if index >= pool.len() {
         return;
     }
-    state.deck.push(pool.remove(index));
+    state.deck.put(pool.remove(index));
     let remaining = returns_left - 1;
     if remaining == 0 {
-        state.rng.shuffle(&mut state.deck);
+        state.deck.shuffle(&mut state.rng);
         state.hands[player as usize] = pool;
         state.end_turn();
     } else {
@@ -530,18 +530,18 @@ impl Game for Coup {
     fn new_initial_state(&self, seed: u64) -> Self::State {
         let seats = self.seats as usize;
         let mut rng = Prng::new(seed);
-        let mut deck = Vec::with_capacity(15);
+        let mut deck = Pile::new();
         for character in CHARACTERS {
             for _ in 0..3 {
-                deck.push(character);
+                deck.put(character);
             }
         }
-        rng.shuffle(&mut deck);
+        deck.shuffle(&mut rng);
 
         let mut hands = vec![Vec::new(); seats];
         for hand in &mut hands {
-            hand.push(deck.pop().unwrap());
-            hand.push(deck.pop().unwrap());
+            hand.push(deck.draw().unwrap());
+            hand.push(deck.draw().unwrap());
         }
 
         CoupState {
@@ -705,7 +705,7 @@ mod tests {
     use super::Action::{self, Block, Challenge, Exchange, Lose, Pass, Steal, Tax};
     use super::{CHARACTERS, Character, Coup, CoupState, Phase};
     use Character::{Ambassador, Assassin, Captain, Contessa, Duke};
-    use turnbase::{Game, PlayerId, Prng};
+    use turnbase::{Game, Pile, PlayerId, Prng};
 
     const P0: PlayerId = PlayerId::new(0);
     const P1: PlayerId = PlayerId::new(1);
@@ -715,17 +715,15 @@ mod tests {
     /// cards. Seat 0 to act.
     fn rigged(hands: Vec<Vec<Character>>, coins: Vec<u8>) -> CoupState {
         let seats = u8::try_from(hands.len()).unwrap();
-        let mut deck = Vec::new();
+        let mut deck = Pile::new();
         for character in CHARACTERS {
             for _ in 0..3 {
-                deck.push(character);
+                deck.put(character);
             }
         }
         for hand in &hands {
             for &card in hand {
-                if let Some(pos) = deck.iter().position(|&c| c == card) {
-                    deck.remove(pos);
-                }
+                deck.remove_item(&card);
             }
         }
         let lost = vec![Vec::new(); hands.len()];
