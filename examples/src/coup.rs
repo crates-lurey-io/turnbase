@@ -1,17 +1,21 @@
-//! Coup (2-player MVP): a bluffing game of hidden influence.
+//! Coup (2-4 players): a bluffing game of hidden influence.
 //!
-//! This is the response-window validation from `ARCHITECTURE.md`: a turn is not
-//! "act, next player" but a small state machine of decision points. Declaring a
-//! character action opens a `Respond` window (the opponent may pass, challenge,
-//! or block); a block opens a `RespondToBlock` window (the actor may pass or
-//! challenge). Every window is just a `Phase` with `active_players` and
-//! `legal_actions` computed from it. Nothing bespoke; the same primitives that
-//! run tic-tac-toe run the challenge/block flow.
+//! The response-window validation from `ARCHITECTURE.md`, at its full scale. A
+//! turn is a small state machine of decision points: a declared character
+//! action opens a `Respond` window that every other living seat passes through
+//! in turn order (each may pass, challenge, or block), and a block opens a
+//! `RespondToBlock` window that every seat except the blocker passes through.
+//! Every window is a `Phase` whose `active_players`/`legal_actions` are computed
+//! from a queue of remaining responders on the game's own state. Generalizing
+//! from two players to four is just letting that queue hold more than one seat;
+//! no engine machinery changes.
 //!
 //! Three state zones: public fields, each seat's face-down `hands` (private),
 //! and the `deck` (hidden from everyone). `view` returns public + own hand.
-//! Exchange (Ambassador) is deferred; all five characters are still in the deck
-//! (Ambassador is claimable as a Steal blocker). See `.matan/coup-plan.md`.
+//! Multi-player rules modeled: any seat may challenge a claim; only the target
+//! may block Assassinate/Steal; any seat may block Foreign Aid; a block may be
+//! challenged by anyone but the blocker. Challenge priority is sequentialized
+//! into turn order (see `.matan/coup-plan.md`).
 
 use turnbase::{ActivePlayers, Game, PlayerId, Prng};
 
@@ -24,7 +28,7 @@ pub enum Character {
     Assassin,
     /// Steal; blocks Steal.
     Captain,
-    /// Exchange (deferred); blocks Steal.
+    /// Exchange; blocks Steal.
     Ambassador,
     /// Blocks Assassinate.
     Contessa,
@@ -38,24 +42,24 @@ const CHARACTERS: [Character; 5] = [
     Character::Contessa,
 ];
 
-/// A move. The set is phase-dependent: turn actions during `ChooseAction`,
-/// responses during the windows, and `Lose` when an influence must be revealed.
+/// A move. The legal set is phase-dependent. Targeted actions name their target
+/// seat.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Action {
     /// +1 coin. Uncontested.
     Income,
-    /// +2 coins. Blockable by Duke.
+    /// +2 coins. Blockable by Duke (any seat).
     ForeignAid,
-    /// Pay 7; opponent loses an influence. Forced at 10+. Uncontested.
-    Coup,
+    /// Pay 7; the target loses an influence. Forced at 10+. Uncontested.
+    Coup(u8),
     /// Claim Duke for +3 coins. Challengeable.
     Tax,
-    /// Claim Assassin, pay 3; opponent loses an influence. Challengeable,
-    /// blockable by Contessa.
-    Assassinate,
-    /// Claim Captain, take 2 coins. Challengeable, blockable by Captain or
-    /// Ambassador.
-    Steal,
+    /// Claim Assassin, pay 3; the target loses an influence. Challengeable,
+    /// blockable by the target with Contessa.
+    Assassinate(u8),
+    /// Claim Captain, take 2 coins from the target. Challengeable, blockable by
+    /// the target with Captain or Ambassador.
+    Steal(u8),
     /// Claim Ambassador, draw two and choose which to keep. Challengeable.
     Exchange,
     /// Return the card at this pool index to the deck (during an exchange).
@@ -70,13 +74,13 @@ pub enum Action {
     Lose(usize),
 }
 
-/// The action being resolved and who can respond to it.
+/// The action being resolved and the seats that still owe a response.
 #[derive(Clone, PartialEq, Eq, Debug)]
 struct Pending {
     action: Action,
     actor: u8,
     claim: Option<Character>,
-    block_options: Vec<Character>,
+    to_respond: Vec<u8>,
 }
 
 /// What to run once a `Lose` is chosen.
@@ -93,9 +97,11 @@ enum Phase {
         pending: Pending,
     },
     RespondToBlock {
-        pending: Pending,
+        action: Action,
+        actor: u8,
         blocker: u8,
         block_as: Character,
+        to_respond: Vec<u8>,
     },
     Lose {
         who: u8,
@@ -109,14 +115,15 @@ enum Phase {
     GameOver,
 }
 
-/// A Coup position.
+/// A Coup position for 2-4 seats.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct CoupState {
-    coins: [u8; 2],
-    hands: [Vec<Character>; 2],
-    lost: [Vec<Character>; 2],
+    coins: Vec<u8>,
+    hands: Vec<Vec<Character>>,
+    lost: Vec<Vec<Character>>,
     deck: Vec<Character>,
     current: u8,
+    seats: u8,
     phase: Phase,
     rng: Prng,
 }
@@ -124,13 +131,13 @@ pub struct CoupState {
 impl CoupState {
     /// Coins held by seat `player`.
     #[must_use]
-    pub const fn coins(&self, player: usize) -> u8 {
+    pub fn coins(&self, player: usize) -> u8 {
         self.coins[player]
     }
 
     /// Number of face-down influence cards seat `player` still holds.
     #[must_use]
-    pub const fn influence(&self, player: usize) -> usize {
+    pub fn influence(&self, player: usize) -> usize {
         self.hands[player].len()
     }
 
@@ -153,6 +160,12 @@ impl CoupState {
         self.current
     }
 
+    /// The number of seats.
+    #[must_use]
+    pub const fn seats(&self) -> u8 {
+        self.seats
+    }
+
     /// Whether the match has ended.
     #[must_use]
     pub const fn is_over(&self) -> bool {
@@ -160,7 +173,11 @@ impl CoupState {
     }
 
     fn end_turn(&mut self) {
-        self.current = 1 - self.current;
+        let mut seat = (self.current + 1) % self.seats;
+        while self.hands[seat as usize].is_empty() {
+            seat = (seat + 1) % self.seats;
+        }
+        self.current = seat;
         self.phase = Phase::ChooseAction;
     }
 }
@@ -169,11 +186,11 @@ impl CoupState {
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct CoupView {
     /// Coins held by each seat.
-    pub coins: [u8; 2],
+    pub coins: Vec<u8>,
     /// Revealed cards of each seat.
-    pub lost: [Vec<Character>; 2],
+    pub lost: Vec<Vec<Character>>,
     /// Face-down influence count of each seat.
-    pub influence: [usize; 2],
+    pub influence: Vec<usize>,
     /// Cards remaining in the hidden deck (count only).
     pub deck_size: usize,
     /// The seat to move.
@@ -184,12 +201,67 @@ pub struct CoupView {
     pub over: bool,
 }
 
-/// The rules of 2-player Coup.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
-pub struct Coup;
+/// The rules of Coup for a chosen number of seats.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Coup {
+    seats: u8,
+}
 
-const fn opponent(seat: u8) -> u8 {
-    1 - seat
+impl Coup {
+    /// Creates a game for `seats` players (2-4).
+    #[must_use]
+    pub const fn new(seats: u8) -> Self {
+        Self { seats }
+    }
+}
+
+impl Default for Coup {
+    fn default() -> Self {
+        Self::new(2)
+    }
+}
+
+#[allow(clippy::cast_possible_truncation)] // seat indices are 0..=3
+const fn seat_of(player: PlayerId) -> u8 {
+    player.index() as u8
+}
+
+fn alive(state: &CoupState, seat: u8) -> bool {
+    !state.hands[seat as usize].is_empty()
+}
+
+fn count_alive(state: &CoupState) -> usize {
+    state.hands.iter().filter(|hand| !hand.is_empty()).count()
+}
+
+/// Living seats other than `actor`, in turn order starting after `actor`.
+fn responders(state: &CoupState, actor: u8) -> Vec<u8> {
+    let mut out = Vec::new();
+    let mut seat = (actor + 1) % state.seats;
+    while seat != actor {
+        if alive(state, seat) {
+            out.push(seat);
+        }
+        seat = (seat + 1) % state.seats;
+    }
+    out
+}
+
+/// Living seats able to challenge a block: everyone but the blocker, in turn
+/// order starting from the actor.
+fn block_challengers(state: &CoupState, actor: u8, blocker: u8) -> Vec<u8> {
+    let mut out = Vec::new();
+    let mut seat = actor;
+    loop {
+        if seat != blocker && alive(state, seat) {
+            out.push(seat);
+        }
+        seat = (seat + 1) % state.seats;
+        if seat == actor {
+            break;
+        }
+    }
+    out
 }
 
 fn hand_has(state: &CoupState, seat: u8, card: Character) -> bool {
@@ -211,9 +283,8 @@ fn redraw(state: &mut CoupState, seat: u8, card: Character) {
 }
 
 /// Applies a resolved action's effect, then either ends the turn or opens the
-/// `Lose` decision point the effect requires.
+/// decision point the effect requires.
 fn resolve_action(state: &mut CoupState, action: Action, actor: u8) {
-    let target = opponent(actor);
     match action {
         Action::ForeignAid => {
             state.coins[actor as usize] += 2;
@@ -223,42 +294,47 @@ fn resolve_action(state: &mut CoupState, action: Action, actor: u8) {
             state.coins[actor as usize] += 3;
             state.end_turn();
         }
-        Action::Steal => {
+        Action::Steal(target) => {
             let amount = state.coins[target as usize].min(2);
             state.coins[target as usize] -= amount;
             state.coins[actor as usize] += amount;
             state.end_turn();
         }
-        Action::Assassinate => {
-            state.phase = Phase::Lose {
-                who: target,
-                resume: Resume::EndTurn,
-            };
-        }
-        Action::Exchange => {
-            // Draw up to two, pool them with the current hand, then return as
-            // many as were drawn. The hand is emptied into the pool for the
-            // duration of the decision.
-            let mut pool = std::mem::take(&mut state.hands[actor as usize]);
-            let mut drawn = 0u8;
-            for _ in 0..2 {
-                if let Some(card) = state.deck.pop() {
-                    pool.push(card);
-                    drawn += 1;
-                }
-            }
-            if drawn == 0 {
-                state.hands[actor as usize] = pool;
-                state.end_turn();
-            } else {
-                state.phase = Phase::ExchangeReturn {
-                    player: actor,
-                    pool,
-                    returns_left: drawn,
+        Action::Assassinate(target) => {
+            if alive(state, target) {
+                state.phase = Phase::Lose {
+                    who: target,
+                    resume: Resume::EndTurn,
                 };
+            } else {
+                state.end_turn();
             }
         }
+        Action::Exchange => start_exchange(state, actor),
         _ => state.end_turn(),
+    }
+}
+
+fn start_exchange(state: &mut CoupState, actor: u8) {
+    // Draw up to two, pool them with the current hand, then return as many as
+    // were drawn. The hand is emptied into the pool for the decision.
+    let mut pool = std::mem::take(&mut state.hands[actor as usize]);
+    let mut drawn = 0u8;
+    for _ in 0..2 {
+        if let Some(card) = state.deck.pop() {
+            pool.push(card);
+            drawn += 1;
+        }
+    }
+    if drawn == 0 {
+        state.hands[actor as usize] = pool;
+        state.end_turn();
+    } else {
+        state.phase = Phase::ExchangeReturn {
+            player: actor,
+            pool,
+            returns_left: drawn,
+        };
     }
 }
 
@@ -290,6 +366,22 @@ fn apply_exchange_return(
     }
 }
 
+fn open_response(state: &mut CoupState, action: Action, actor: u8, claim: Option<Character>) {
+    let to_respond = responders(state, actor);
+    if to_respond.is_empty() {
+        resolve_action(state, action, actor);
+    } else {
+        state.phase = Phase::Respond {
+            pending: Pending {
+                action,
+                actor,
+                claim,
+                to_respond,
+            },
+        };
+    }
+}
+
 fn apply_choose(state: &mut CoupState, action: Action) {
     let actor = state.current;
     match action {
@@ -297,89 +389,50 @@ fn apply_choose(state: &mut CoupState, action: Action) {
             state.coins[actor as usize] += 1;
             state.end_turn();
         }
-        Action::Coup => {
+        Action::Coup(target) => {
             state.coins[actor as usize] -= 7;
             state.phase = Phase::Lose {
-                who: opponent(actor),
+                who: target,
                 resume: Resume::EndTurn,
             };
         }
-        Action::ForeignAid => {
-            state.phase = Phase::Respond {
-                pending: Pending {
-                    action,
-                    actor,
-                    claim: None,
-                    block_options: vec![Character::Duke],
-                },
-            };
-        }
-        Action::Tax => {
-            state.phase = Phase::Respond {
-                pending: Pending {
-                    action,
-                    actor,
-                    claim: Some(Character::Duke),
-                    block_options: Vec::new(),
-                },
-            };
-        }
-        Action::Assassinate => {
+        Action::ForeignAid => open_response(state, action, actor, None),
+        Action::Tax => open_response(state, action, actor, Some(Character::Duke)),
+        Action::Assassinate(_) => {
             state.coins[actor as usize] -= 3;
-            state.phase = Phase::Respond {
-                pending: Pending {
-                    action,
-                    actor,
-                    claim: Some(Character::Assassin),
-                    block_options: vec![Character::Contessa],
-                },
-            };
+            open_response(state, action, actor, Some(Character::Assassin));
         }
-        Action::Steal => {
-            state.phase = Phase::Respond {
-                pending: Pending {
-                    action,
-                    actor,
-                    claim: Some(Character::Captain),
-                    block_options: vec![Character::Captain, Character::Ambassador],
-                },
-            };
-        }
-        Action::Exchange => {
-            state.phase = Phase::Respond {
-                pending: Pending {
-                    action,
-                    actor,
-                    claim: Some(Character::Ambassador),
-                    block_options: Vec::new(),
-                },
-            };
-        }
+        Action::Steal(_) => open_response(state, action, actor, Some(Character::Captain)),
+        Action::Exchange => open_response(state, action, actor, Some(Character::Ambassador)),
         _ => {}
     }
 }
 
-fn apply_respond(state: &mut CoupState, pending: Pending, action: Action) {
-    let responder = opponent(pending.actor);
+fn apply_respond(state: &mut CoupState, mut pending: Pending, action: Action) {
     match action {
-        Action::Pass => resolve_action(state, pending.action, pending.actor),
+        Action::Pass => {
+            pending.to_respond.remove(0);
+            if pending.to_respond.is_empty() {
+                resolve_action(state, pending.action, pending.actor);
+            } else {
+                state.phase = Phase::Respond { pending };
+            }
+        }
         Action::Challenge => {
             let claim = pending
                 .claim
                 .expect("Challenge is only legal against a claim");
+            let challenger = pending.to_respond[0];
             if hand_has(state, pending.actor, claim) {
-                // Claim was true: the challenger loses an influence, the actor
-                // redraws the proven card, then the action resolves.
                 redraw(state, pending.actor, claim);
                 state.phase = Phase::Lose {
-                    who: responder,
+                    who: challenger,
                     resume: Resume::ApplyThenEnd {
                         action: pending.action,
                         actor: pending.actor,
                     },
                 };
             } else {
-                // Caught bluffing: the actor loses an influence, action fizzles.
                 state.phase = Phase::Lose {
                     who: pending.actor,
                     resume: Resume::EndTurn,
@@ -387,11 +440,19 @@ fn apply_respond(state: &mut CoupState, pending: Pending, action: Action) {
             }
         }
         Action::Block(block_as) => {
-            state.phase = Phase::RespondToBlock {
-                pending,
-                blocker: responder,
-                block_as,
-            };
+            let blocker = pending.to_respond[0];
+            let to_respond = block_challengers(state, pending.actor, blocker);
+            if to_respond.is_empty() {
+                state.end_turn();
+            } else {
+                state.phase = Phase::RespondToBlock {
+                    action: pending.action,
+                    actor: pending.actor,
+                    blocker,
+                    block_as,
+                    to_respond,
+                };
+            }
         }
         _ => {}
     }
@@ -399,31 +460,40 @@ fn apply_respond(state: &mut CoupState, pending: Pending, action: Action) {
 
 fn apply_respond_block(
     state: &mut CoupState,
-    pending: &Pending,
+    action: Action,
+    actor: u8,
     blocker: u8,
     block_as: Character,
-    action: Action,
+    mut to_respond: Vec<u8>,
+    response: Action,
 ) {
-    match action {
-        Action::Pass => state.end_turn(), // block stands; action fizzles
+    match response {
+        Action::Pass => {
+            to_respond.remove(0);
+            if to_respond.is_empty() {
+                state.end_turn(); // block stands; action fizzles
+            } else {
+                state.phase = Phase::RespondToBlock {
+                    action,
+                    actor,
+                    blocker,
+                    block_as,
+                    to_respond,
+                };
+            }
+        }
         Action::Challenge => {
+            let challenger = to_respond[0];
             if hand_has(state, blocker, block_as) {
-                // Block was true: the actor loses an influence, blocker redraws,
-                // action stays blocked.
                 redraw(state, blocker, block_as);
                 state.phase = Phase::Lose {
-                    who: pending.actor,
+                    who: challenger,
                     resume: Resume::EndTurn,
                 };
             } else {
-                // Block was a bluff: the blocker loses an influence, then the
-                // original action resolves.
                 state.phase = Phase::Lose {
                     who: blocker,
-                    resume: Resume::ApplyThenEnd {
-                        action: pending.action,
-                        actor: pending.actor,
-                    },
+                    resume: Resume::ApplyThenEnd { action, actor },
                 };
             }
         }
@@ -442,8 +512,7 @@ fn apply_lose(state: &mut CoupState, who: u8, resume: Resume, action: Action) {
     let card = state.hands[seat].remove(index);
     state.lost[seat].push(card);
 
-    if state.hands[seat].is_empty() {
-        // One seat eliminated ends 2-player Coup.
+    if count_alive(state) == 1 {
         state.phase = Phase::GameOver;
         return;
     }
@@ -459,6 +528,7 @@ impl Game for Coup {
     type View = CoupView;
 
     fn new_initial_state(&self, seed: u64) -> Self::State {
+        let seats = self.seats as usize;
         let mut rng = Prng::new(seed);
         let mut deck = Vec::with_capacity(15);
         for character in CHARACTERS {
@@ -468,32 +538,33 @@ impl Game for Coup {
         }
         rng.shuffle(&mut deck);
 
-        let mut hands: [Vec<Character>; 2] = [Vec::new(), Vec::new()];
+        let mut hands = vec![Vec::new(); seats];
         for hand in &mut hands {
             hand.push(deck.pop().unwrap());
             hand.push(deck.pop().unwrap());
         }
 
         CoupState {
-            coins: [2, 2],
+            coins: vec![2; seats],
             hands,
-            lost: [Vec::new(), Vec::new()],
+            lost: vec![Vec::new(); seats],
             deck,
             current: 0,
+            seats: self.seats,
             phase: Phase::ChooseAction,
             rng,
         }
     }
 
     fn num_players(&self) -> usize {
-        2
+        self.seats as usize
     }
 
     fn active_players(&self, state: &Self::State) -> ActivePlayers {
         let seat = match &state.phase {
             Phase::ChooseAction => state.current,
-            Phase::Respond { pending } => opponent(pending.actor),
-            Phase::RespondToBlock { pending, .. } => pending.actor,
+            Phase::Respond { pending } => pending.to_respond[0],
+            Phase::RespondToBlock { to_respond, .. } => to_respond[0],
             Phase::Lose { who, .. } => *who,
             Phase::ExchangeReturn { player, .. } => *player,
             Phase::GameOver => return ActivePlayers::none(),
@@ -502,46 +573,19 @@ impl Game for Coup {
     }
 
     fn legal_actions(&self, state: &Self::State, player: PlayerId) -> Vec<Self::Action> {
-        let seat = player.index();
+        let seat = seat_of(player);
         match &state.phase {
-            Phase::ChooseAction if seat == u32::from(state.current) => {
-                let coins = state.coins[seat as usize];
-                if coins >= 10 {
-                    return vec![Action::Coup];
-                }
-                let mut actions = vec![
-                    Action::Income,
-                    Action::ForeignAid,
-                    Action::Tax,
-                    Action::Steal,
-                    Action::Exchange,
-                ];
-                if coins >= 3 {
-                    actions.push(Action::Assassinate);
-                }
-                if coins >= 7 {
-                    actions.push(Action::Coup);
-                }
-                actions
+            Phase::ChooseAction if seat == state.current => choose_actions(state, seat),
+            Phase::Respond { pending } if seat == pending.to_respond[0] => {
+                respond_actions(pending, seat)
             }
-            Phase::Respond { pending } if seat == u32::from(opponent(pending.actor)) => {
-                let mut actions = vec![Action::Pass];
-                if pending.claim.is_some() {
-                    actions.push(Action::Challenge);
-                }
-                for &character in &pending.block_options {
-                    actions.push(Action::Block(character));
-                }
-                actions
-            }
-            Phase::RespondToBlock { pending, .. } if seat == u32::from(pending.actor) => {
+            Phase::RespondToBlock { to_respond, .. } if seat == to_respond[0] => {
                 vec![Action::Pass, Action::Challenge]
             }
-            Phase::Lose { who, .. } if seat == u32::from(*who) => (0..state.hands[*who as usize]
-                .len())
+            Phase::Lose { who, .. } if seat == *who => (0..state.hands[*who as usize].len())
                 .map(Action::Lose)
                 .collect(),
-            Phase::ExchangeReturn { player, pool, .. } if seat == u32::from(*player) => {
+            Phase::ExchangeReturn { player, pool, .. } if seat == *player => {
                 (0..pool.len()).map(Action::Return).collect()
             }
             _ => Vec::new(),
@@ -553,12 +597,20 @@ impl Game for Coup {
             Phase::ChooseAction => apply_choose(state, action),
             Phase::Respond { pending } => apply_respond(state, pending, action),
             Phase::RespondToBlock {
-                pending,
+                action: pending_action,
+                actor,
                 blocker,
                 block_as,
-            } => {
-                apply_respond_block(state, &pending, blocker, block_as, action);
-            }
+                to_respond,
+            } => apply_respond_block(
+                state,
+                pending_action,
+                actor,
+                blocker,
+                block_as,
+                to_respond,
+                action,
+            ),
             Phase::Lose { who, resume } => apply_lose(state, who, resume, action),
             Phase::ExchangeReturn {
                 player,
@@ -574,12 +626,13 @@ impl Game for Coup {
     }
 
     fn reward(&self, state: &Self::State, player: PlayerId) -> f64 {
-        let seat = player.index() as usize;
-        let other = 1 - seat;
-        match (state.hands[seat].is_empty(), state.hands[other].is_empty()) {
-            (false, true) => 1.0,
-            (true, false) => -1.0,
-            _ => 0.0,
+        let seat = seat_of(player);
+        if !alive(state, seat) {
+            -1.0
+        } else if count_alive(state) == 1 {
+            1.0
+        } else {
+            0.0
         }
     }
 
@@ -588,9 +641,9 @@ impl Game for Coup {
             .map(|p| state.hands[p.index() as usize].clone())
             .unwrap_or_default();
         CoupView {
-            coins: state.coins,
+            coins: state.coins.clone(),
             lost: state.lost.clone(),
-            influence: [state.hands[0].len(), state.hands[1].len()],
+            influence: state.hands.iter().map(Vec::len).collect(),
             deck_size: state.deck.len(),
             current: state.current,
             own_hand,
@@ -599,21 +652,69 @@ impl Game for Coup {
     }
 }
 
+fn choose_actions(state: &CoupState, seat: u8) -> Vec<Action> {
+    let coins = state.coins[seat as usize];
+    let targets = responders(state, seat);
+    if coins >= 10 {
+        return targets.into_iter().map(Action::Coup).collect();
+    }
+    let mut actions = vec![
+        Action::Income,
+        Action::ForeignAid,
+        Action::Tax,
+        Action::Exchange,
+    ];
+    for &target in &targets {
+        actions.push(Action::Steal(target));
+    }
+    if coins >= 3 {
+        for &target in &targets {
+            actions.push(Action::Assassinate(target));
+        }
+    }
+    if coins >= 7 {
+        for &target in &targets {
+            actions.push(Action::Coup(target));
+        }
+    }
+    actions
+}
+
+fn respond_actions(pending: &Pending, responder: u8) -> Vec<Action> {
+    let mut actions = vec![Action::Pass];
+    if pending.claim.is_some() {
+        actions.push(Action::Challenge);
+    }
+    match pending.action {
+        Action::ForeignAid => actions.push(Action::Block(Character::Duke)),
+        Action::Assassinate(target) if target == responder => {
+            actions.push(Action::Block(Character::Contessa));
+        }
+        Action::Steal(target) if target == responder => {
+            actions.push(Action::Block(Character::Captain));
+            actions.push(Action::Block(Character::Ambassador));
+        }
+        _ => {}
+    }
+    actions
+}
+
 #[cfg(test)]
 #[allow(clippy::float_cmp)] // reward() is exactly 0.0 / ±1.0
 mod tests {
-    use super::{Action, CHARACTERS, Character, Coup, CoupState, Phase};
-    use turnbase::{Game, PlayerId, Prng};
-
-    use Action::{Block, Challenge, Lose, Pass};
+    use super::Action::{self, Block, Challenge, Exchange, Lose, Pass, Steal, Tax};
+    use super::{CHARACTERS, Character, Coup, CoupState, Phase};
     use Character::{Ambassador, Assassin, Captain, Contessa, Duke};
+    use turnbase::{Game, PlayerId, Prng};
 
     const P0: PlayerId = PlayerId::new(0);
     const P1: PlayerId = PlayerId::new(1);
+    const P2: PlayerId = PlayerId::new(2);
 
-    /// Builds a state with chosen hands and coins; the deck is the remaining
-    /// cards. P0 to act.
-    fn rigged(hands: [Vec<Character>; 2], coins: [u8; 2]) -> CoupState {
+    /// Builds a state with the given hands and coins; the deck is the leftover
+    /// cards. Seat 0 to act.
+    fn rigged(hands: Vec<Vec<Character>>, coins: Vec<u8>) -> CoupState {
+        let seats = u8::try_from(hands.len()).unwrap();
         let mut deck = Vec::new();
         for character in CHARACTERS {
             for _ in 0..3 {
@@ -627,124 +728,132 @@ mod tests {
                 }
             }
         }
+        let lost = vec![Vec::new(); hands.len()];
         CoupState {
             coins,
             hands,
-            lost: [Vec::new(), Vec::new()],
+            lost,
             deck,
             current: 0,
+            seats,
             phase: Phase::ChooseAction,
             rng: Prng::new(0),
         }
     }
 
+    /// Total cards in play (hands + revealed + deck), grouped by character.
+    fn card_counts(state: &CoupState) -> [u8; 5] {
+        let mut counts = [0u8; 5];
+        let index = |c: Character| CHARACTERS.iter().position(|&x| x == c).unwrap();
+        for hand in (0..state.seats() as usize).map(|s| state.hand(s)) {
+            for &c in hand {
+                counts[index(c)] += 1;
+            }
+        }
+        for lost in (0..state.seats() as usize).map(|s| state.lost(s)) {
+            for &c in lost {
+                counts[index(c)] += 1;
+            }
+        }
+        for &c in &state.deck {
+            counts[index(c)] += 1;
+        }
+        // Mid-exchange, drawn cards live transiently in the phase pool.
+        if let Phase::ExchangeReturn { pool, .. } = &state.phase {
+            for &c in pool {
+                counts[index(c)] += 1;
+            }
+        }
+        counts
+    }
+
+    fn play_random(game: Coup, seed: u64) -> CoupState {
+        let mut state = game.new_initial_state(seed);
+        let mut rng = Prng::new(seed ^ 0xABCD);
+        let mut steps = 0;
+        while !game.is_terminal(&state) {
+            // Card conservation holds at every step.
+            assert_eq!(
+                card_counts(&state),
+                [3; 5],
+                "cards not conserved (seed {seed})"
+            );
+            let player = game.active_players(&state).iter().next().unwrap();
+            let actions = game.legal_actions(&state, player);
+            let index = usize::try_from(rng.below(actions.len() as u64)).unwrap();
+            game.apply(&mut state, player, actions[index]);
+            steps += 1;
+            assert!(steps < 20_000, "seed {seed} did not terminate");
+        }
+        state
+    }
+
     #[test]
     fn tax_unchallenged_gains_three() {
-        let game = Coup;
-        let mut state = rigged([vec![Duke, Captain], vec![Contessa, Assassin]], [2, 2]);
-        game.apply(&mut state, P0, Action::Tax);
+        let game = Coup::default();
+        let mut state = rigged(
+            vec![vec![Duke, Captain], vec![Contessa, Assassin]],
+            vec![2, 2],
+        );
+        game.apply(&mut state, P0, Tax);
         game.apply(&mut state, P1, Pass);
         assert_eq!(state.coins(0), 5);
         assert_eq!(state.current(), 1);
     }
 
     #[test]
-    fn tax_bluff_caught_costs_the_bluffer_an_influence() {
-        let game = Coup;
-        // P0 claims Tax without a Duke.
-        let mut state = rigged([vec![Captain, Contessa], vec![Duke, Assassin]], [2, 2]);
-        game.apply(&mut state, P0, Action::Tax);
+    fn tax_bluff_caught_costs_the_bluffer() {
+        let game = Coup::default();
+        let mut state = rigged(
+            vec![vec![Captain, Contessa], vec![Duke, Assassin]],
+            vec![2, 2],
+        );
+        game.apply(&mut state, P0, Tax);
         game.apply(&mut state, P1, Challenge);
-        game.apply(&mut state, P0, Lose(0)); // bluffer loses
-        assert_eq!(state.coins(0), 2, "no coins gained on a caught bluff");
-        assert_eq!(state.influence(0), 1);
-        assert_eq!(state.current(), 1);
-    }
-
-    #[test]
-    fn failed_challenge_costs_the_challenger_and_the_action_resolves() {
-        let game = Coup;
-        // P0 really has a Duke.
-        let mut state = rigged([vec![Duke, Captain], vec![Contessa, Assassin]], [2, 2]);
-        game.apply(&mut state, P0, Action::Tax);
-        game.apply(&mut state, P1, Challenge);
-        game.apply(&mut state, P1, Lose(0)); // challenger loses
-        assert_eq!(state.influence(1), 1);
-        assert_eq!(state.influence(0), 2, "actor kept two influence via redraw");
-        assert_eq!(state.coins(0), 5, "the tax still resolved");
-        assert_eq!(state.current(), 1);
-    }
-
-    #[test]
-    fn foreign_aid_unblocked_gains_two() {
-        let game = Coup;
-        let mut state = rigged([vec![Captain, Contessa], vec![Assassin, Assassin]], [2, 2]);
-        game.apply(&mut state, P0, Action::ForeignAid);
-        game.apply(&mut state, P1, Pass);
-        assert_eq!(state.coins(0), 4);
-    }
-
-    #[test]
-    fn foreign_aid_blocked_by_duke_gains_nothing() {
-        let game = Coup;
-        let mut state = rigged([vec![Captain, Contessa], vec![Duke, Assassin]], [2, 2]);
-        game.apply(&mut state, P0, Action::ForeignAid);
-        game.apply(&mut state, P1, Block(Duke));
-        game.apply(&mut state, P0, Pass); // accept the block
+        game.apply(&mut state, P0, Lose(0));
         assert_eq!(state.coins(0), 2);
-        assert_eq!(state.current(), 1);
+        assert_eq!(state.influence(0), 1);
     }
 
     #[test]
-    fn assassinate_makes_the_target_lose_an_influence() {
-        let game = Coup;
-        let mut state = rigged([vec![Assassin, Captain], vec![Contessa, Duke]], [3, 2]);
-        game.apply(&mut state, P0, Action::Assassinate);
-        game.apply(&mut state, P1, Pass);
+    fn failed_challenge_resolves_the_action() {
+        let game = Coup::default();
+        let mut state = rigged(
+            vec![vec![Duke, Captain], vec![Contessa, Assassin]],
+            vec![2, 2],
+        );
+        game.apply(&mut state, P0, Tax);
+        game.apply(&mut state, P1, Challenge);
         game.apply(&mut state, P1, Lose(0));
-        assert_eq!(state.coins(0), 0, "assassination costs three");
         assert_eq!(state.influence(1), 1);
+        assert_eq!(state.influence(0), 2);
+        assert_eq!(state.coins(0), 5);
     }
 
     #[test]
-    fn assassinate_blocked_by_contessa_spares_the_target() {
-        let game = Coup;
-        let mut state = rigged([vec![Assassin, Captain], vec![Contessa, Duke]], [3, 2]);
-        game.apply(&mut state, P0, Action::Assassinate);
-        game.apply(&mut state, P1, Block(Contessa));
-        game.apply(&mut state, P0, Pass);
-        assert_eq!(state.influence(1), 2, "the target was spared");
-        assert_eq!(state.coins(0), 0, "but the coins were still spent");
-    }
-
-    #[test]
-    fn challenging_a_real_assassin_can_cost_the_game() {
-        let game = Coup;
-        let mut state = rigged([vec![Assassin, Captain], vec![Contessa, Duke]], [3, 2]);
-        game.apply(&mut state, P0, Action::Assassinate);
-        game.apply(&mut state, P1, Challenge); // P0 has the Assassin
-        game.apply(&mut state, P1, Lose(0)); // challenge penalty
-        game.apply(&mut state, P1, Lose(0)); // then the assassination
+    fn assassinate_challenge_can_cost_the_game() {
+        let game = Coup::default();
+        let mut state = rigged(
+            vec![vec![Assassin, Captain], vec![Contessa, Duke]],
+            vec![3, 2],
+        );
+        game.apply(&mut state, P0, Action::Assassinate(1));
+        game.apply(&mut state, P1, Challenge);
+        game.apply(&mut state, P1, Lose(0));
+        game.apply(&mut state, P1, Lose(0));
         assert!(game.is_terminal(&state));
         assert_eq!(game.reward(&state, P0), 1.0);
         assert_eq!(game.reward(&state, P1), -1.0);
     }
 
     #[test]
-    fn steal_takes_two_coins() {
-        let game = Coup;
-        let mut state = rigged([vec![Captain, Duke], vec![Contessa, Assassin]], [2, 5]);
-        game.apply(&mut state, P0, Action::Steal);
-        game.apply(&mut state, P1, Pass);
-        assert_eq!(state.coins(0), 4);
-        assert_eq!(state.coins(1), 3);
-    }
-
-    #[test]
     fn steal_blocked_by_ambassador_takes_nothing() {
-        let game = Coup;
-        let mut state = rigged([vec![Captain, Duke], vec![Ambassador, Assassin]], [2, 5]);
-        game.apply(&mut state, P0, Action::Steal);
+        let game = Coup::default();
+        let mut state = rigged(
+            vec![vec![Captain, Duke], vec![Ambassador, Assassin]],
+            vec![2, 5],
+        );
+        game.apply(&mut state, P0, Steal(1));
         game.apply(&mut state, P1, Block(Ambassador));
         game.apply(&mut state, P0, Pass);
         assert_eq!(state.coins(0), 2);
@@ -752,53 +861,104 @@ mod tests {
     }
 
     #[test]
-    fn exchange_unchallenged_keeps_hand_size_and_deck_size() {
-        let game = Coup;
-        let mut state = rigged([vec![Ambassador, Captain], vec![Duke, Contessa]], [2, 2]);
-        let deck_before = game.view(&state, None).deck_size;
-        game.apply(&mut state, P0, Action::Exchange);
-        game.apply(&mut state, P1, Pass); // draws two -> ExchangeReturn
-        assert_eq!(game.active_players(&state).iter().next(), Some(P0));
-        game.apply(&mut state, P0, Action::Return(0));
-        game.apply(&mut state, P0, Action::Return(0));
-        assert_eq!(state.influence(0), 2, "hand size restored");
-        assert_eq!(
-            game.view(&state, None).deck_size,
-            deck_before,
-            "deck size restored"
+    fn exchange_keeps_hand_and_deck_size() {
+        let game = Coup::default();
+        let mut state = rigged(
+            vec![vec![Ambassador, Captain], vec![Duke, Contessa]],
+            vec![2, 2],
         );
+        let deck_before = game.view(&state, None).deck_size;
+        game.apply(&mut state, P0, Exchange);
+        game.apply(&mut state, P1, Pass);
+        game.apply(&mut state, P0, Action::Return(0));
+        game.apply(&mut state, P0, Action::Return(0));
+        assert_eq!(state.influence(0), 2);
+        assert_eq!(game.view(&state, None).deck_size, deck_before);
+        assert_eq!(card_counts(&state), [3; 5]);
+    }
+
+    #[test]
+    fn three_player_tax_asks_both_opponents_in_turn_order() {
+        let game = Coup::new(3);
+        let mut state = rigged(
+            vec![
+                vec![Duke, Captain],
+                vec![Contessa, Assassin],
+                vec![Ambassador, Duke],
+            ],
+            vec![2, 2, 2],
+        );
+        game.apply(&mut state, P0, Tax);
+        // Seat 1 is asked first, then seat 2, then the tax resolves.
+        assert_eq!(game.active_players(&state).iter().next(), Some(P1));
+        game.apply(&mut state, P1, Pass);
+        assert_eq!(game.active_players(&state).iter().next(), Some(P2));
+        game.apply(&mut state, P2, Pass);
+        assert_eq!(state.coins(0), 5);
         assert_eq!(state.current(), 1);
     }
 
     #[test]
-    fn exchange_bluff_caught_costs_an_influence() {
-        let game = Coup;
-        // P0 claims Ambassador without holding one.
-        let mut state = rigged([vec![Captain, Duke], vec![Contessa, Assassin]], [2, 2]);
-        game.apply(&mut state, P0, Action::Exchange);
-        game.apply(&mut state, P1, Challenge);
-        game.apply(&mut state, P0, Lose(0));
-        assert_eq!(state.influence(0), 1);
-        assert_eq!(state.current(), 1);
+    fn three_player_only_the_target_may_block_a_steal() {
+        let game = Coup::new(3);
+        let mut state = rigged(
+            vec![
+                vec![Captain, Duke],
+                vec![Contessa, Assassin],
+                vec![Captain, Duke],
+            ],
+            vec![2, 5, 2],
+        );
+        game.apply(&mut state, P0, Steal(2)); // targets seat 2
+        // Seat 1 is a non-target responder: may pass/challenge but not block.
+        let seat1 = game.legal_actions(&state, P1);
+        assert!(!seat1.iter().any(|a| matches!(a, Block(_))));
+        game.apply(&mut state, P1, Pass);
+        // Seat 2 is the target and may block with Captain or Ambassador.
+        let seat2 = game.legal_actions(&state, P2);
+        assert!(seat2.contains(&Block(Captain)));
     }
 
     #[test]
-    fn random_self_play_always_terminates() {
-        let game = Coup;
-        for seed in 0..50 {
-            let mut state = game.new_initial_state(seed);
-            let mut rng = Prng::new(seed ^ 0xABCD);
-            let mut steps = 0;
-            while !game.is_terminal(&state) {
-                let player = game.active_players(&state).iter().next().unwrap();
-                let actions = game.legal_actions(&state, player);
-                let index = usize::try_from(rng.below(actions.len() as u64)).unwrap();
-                game.apply(&mut state, player, actions[index]);
-                steps += 1;
-                assert!(steps < 10_000, "seed {seed} did not terminate");
+    fn eliminated_seats_are_skipped_but_num_players_is_fixed() {
+        let game = Coup::new(3);
+        // Seat 1 already eliminated (no influence).
+        let mut state = rigged(
+            vec![vec![Duke, Captain], vec![], vec![Contessa, Assassin]],
+            vec![2, 0, 2],
+        );
+        assert_eq!(game.num_players(), 3, "roster stays fixed");
+        game.apply(&mut state, P0, Action::Income);
+        // Turn skips the eliminated seat 1 and lands on seat 2.
+        assert_eq!(state.current(), 2);
+        // A Tax by seat 2 only asks the living seat 0.
+        game.apply(&mut state, P2, Tax);
+        assert_eq!(game.active_players(&state).iter().next(), Some(P0));
+    }
+
+    #[test]
+    fn random_self_play_terminates_for_two_to_four_players() {
+        for seats in 2..=4u8 {
+            let game = Coup::new(seats);
+            for seed in 0..40 {
+                let state = play_random(game, seed);
+                assert!(game.is_terminal(&state));
+                assert_eq!(count_survivors(&state), 1, "seats {seats} seed {seed}");
+                assert_eq!(card_counts(&state), [3; 5]);
             }
-            // Exactly one seat should be standing.
-            assert_ne!(state.influence(0) == 0, state.influence(1) == 0);
         }
+    }
+
+    #[test]
+    fn self_play_is_deterministic() {
+        let game = Coup::new(3);
+        assert_eq!(play_random(game, 1), play_random(game, 1));
+        assert_eq!(play_random(game, 17), play_random(game, 17));
+    }
+
+    fn count_survivors(state: &CoupState) -> usize {
+        (0..state.seats() as usize)
+            .filter(|&s| state.influence(s) > 0)
+            .count()
     }
 }

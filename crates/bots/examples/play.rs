@@ -25,6 +25,7 @@ struct Options {
     seed: u64,
     manual: Vec<u32>,
     step: bool,
+    players: u8,
 }
 
 fn main() {
@@ -36,7 +37,7 @@ fn main() {
     let viewer = (opts.manual.len() == 1).then(|| PlayerId::new(opts.manual[0]));
 
     match game {
-        "coup" => run(&Coup, &opts, viewer, render_coup),
+        "coup" => run(&Coup::new(opts.players), &opts, viewer, render_coup),
         "ttt" => run(&TicTacToe, &opts, viewer, |s, _| one_line(&format!("{s}"))),
         "rps" => run(&RockPaperScissors, &opts, viewer, |s, _| format!("{s:?}")),
         "highcard" => run(&HighCard::default(), &opts, viewer, |s, _| format!("{s:?}")),
@@ -50,6 +51,7 @@ fn parse_options(args: &[String]) -> Options {
         seed: 1,
         manual: Vec::new(),
         step: false,
+        players: 2,
     };
     let mut i = 2;
     while i < args.len() {
@@ -68,6 +70,14 @@ fn parse_options(args: &[String]) -> Options {
                 }
                 _ => opts.manual = vec![1],
             },
+            "--players" => {
+                i += 1;
+                opts.players = args
+                    .get(i)
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(2)
+                    .clamp(2, 4);
+            }
             "--step" => opts.step = true,
             _ => {}
         }
@@ -183,7 +193,7 @@ fn one_line(text: &str) -> String {
 /// hidden opponent's influence is shown as dots, plus any revealed cards.
 fn render_coup(state: &CoupState, viewer: Option<PlayerId>) -> String {
     let mut seats = Vec::new();
-    for seat in 0..2usize {
+    for seat in 0..state.seats() as usize {
         let known = viewer.is_none() || viewer.map(|v| v.index() as usize) == Some(seat);
         let hand = if known {
             format!("{:?}", state.hand(seat))
