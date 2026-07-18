@@ -50,9 +50,11 @@ pub trait PrintableGame: Game {
 ///
 /// Plain rect arithmetic, not a constraint solver: viewport left 70%, stats
 /// and action menu stacked in the remaining top-right 30%, log strip across
-/// the bottom 25%. A game with different needs is expected to implement
-/// [`PrintableGame`] directly against `retroglyph-core` rather than
-/// configuring this layout, per the crate's no-layout-engine stance.
+/// the bottom 25%, each pair separated by a one-cell [`GUTTER`] so adjacent
+/// panels' text never runs together with no visible boundary. A game with
+/// different needs is expected to implement [`PrintableGame`] directly
+/// against `retroglyph-core` rather than configuring this layout, per the
+/// crate's no-layout-engine stance.
 struct Layout {
     viewport: Rect,
     stats: Rect,
@@ -60,42 +62,57 @@ struct Layout {
     log: Rect,
 }
 
+/// Blank cells left between adjacent panels.
+const GUTTER: u16 = 1;
+
 impl Layout {
     const fn new(full: Rect) -> Self {
         let width = full.width();
         let height = full.height();
         let left_width = width * 7 / 10;
-        let right_width = width - left_width;
+        let right_x = left_width.saturating_add(GUTTER);
+        let right_width = width.saturating_sub(right_x);
         let log_height = height / 4;
-        let top_height = height - log_height;
+        let top_height = height.saturating_sub(log_height).saturating_sub(GUTTER);
+        let log_y = top_height.saturating_add(GUTTER);
         let stats_height = top_height / 2;
-        let actions_height = top_height - stats_height;
+        let actions_y = stats_height.saturating_add(GUTTER);
+        let actions_height = top_height.saturating_sub(actions_y);
 
         Self {
             viewport: Rect::new(0, 0, left_width, top_height),
-            stats: Rect::new(left_width, 0, right_width, stats_height),
-            actions: Rect::new(left_width, stats_height, right_width, actions_height),
-            log: Rect::new(0, top_height, width, log_height),
+            stats: Rect::new(right_x, 0, right_width, stats_height),
+            actions: Rect::new(right_x, actions_y, right_width, actions_height),
+            log: Rect::new(0, log_y, width, log_height),
         }
     }
 }
 
 /// Prints `lines` one per row starting `top_offset` rows below `rect`'s top
 /// edge, at `rect`'s left edge. Rows that would fall at or past `rect`'s
-/// bottom edge are dropped rather than drawn, so overlong content clips
-/// instead of spilling into the next panel.
+/// bottom edge are dropped rather than drawn, and each line is truncated to
+/// `rect`'s width, so overlong content clips instead of spilling into the
+/// next panel or the row below.
+///
+/// `Terminal::print` only wraps at the *grid's* width, not an arbitrary
+/// rect's; without this truncation, a line longer than `rect` but shorter
+/// than the full terminal would silently wrap into the row directly below
+/// at the same x, corrupting whatever the next `line` writes there instead
+/// of visibly clipping.
 fn print_rows<B: Backend>(
     term: &mut Terminal<B>,
     rect: Rect,
     top_offset: u16,
     lines: impl IntoIterator<Item = String>,
 ) {
+    let max_chars = usize::from(rect.width());
     let mut y = rect.top().saturating_add(top_offset);
     for line in lines {
         if y >= rect.bottom() {
             break;
         }
-        term.print(rect.left(), y, &line);
+        let clipped: String = line.chars().take(max_chars).collect();
+        term.print(rect.left(), y, &clipped);
         y = y.saturating_add(1);
     }
 }

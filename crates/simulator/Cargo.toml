@@ -36,9 +36,5 @@ name = "interactive"
 required-features = ["ui"]
 
 [[example]]
-name = "interactive_minion_battle"
-required-features = ["ui"]
-
-[[example]]
 name = "interactive_coup"
 required-features = ["ui"]

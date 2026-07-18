@@ -199,6 +199,73 @@ pub struct CoupView {
     pub own_hand: Vec<Character>,
     /// Whether the match is over.
     pub over: bool,
+    /// What is currently being decided, and by whom.
+    pub pending: PendingView,
+}
+
+/// What is currently being decided, and by whom.
+///
+/// A UI-facing summary of the internal turn state machine (declared action,
+/// claim, who must respond) that `Phase` (private) tracks but does not
+/// itself expose.
+///
+/// Every variant names the seat currently owed a decision, so a consumer
+/// does not need to separately call [`Game::active_players`] to know who
+/// that is and cross-reference it against the pending context.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum PendingView {
+    /// `actor` is choosing their turn's action.
+    ChooseAction {
+        /// The seat about to act.
+        actor: u8,
+    },
+    /// `actor` has declared `action` (claiming `claim`, if any); `responder`
+    /// may pass, challenge, or (for a blockable action) block.
+    Respond {
+        /// The seat whose action is pending.
+        actor: u8,
+        /// The declared action.
+        action: Action,
+        /// The character claimed to justify it, or `None` for an
+        /// unclaimed action like Foreign Aid.
+        claim: Option<Character>,
+        /// The seat currently asked to respond.
+        responder: u8,
+    },
+    /// `blocker` has claimed `block_as` to block `actor`'s `action`;
+    /// `responder` may pass or challenge the block.
+    RespondToBlock {
+        /// The seat whose action was blocked.
+        actor: u8,
+        /// The seat claiming the block.
+        blocker: u8,
+        /// The action being blocked.
+        action: Action,
+        /// The character claimed to justify the block.
+        block_as: Character,
+        /// The seat currently asked to respond to the block.
+        responder: u8,
+    },
+    /// `who` must reveal and discard one influence card.
+    Lose {
+        /// The seat losing influence.
+        who: u8,
+    },
+    /// `player` is exchanging. `pool` holds the drawn-plus-kept cards under
+    /// consideration for [`Action::Return`], populated only in `player`'s
+    /// own view (empty for every other viewer, including spectators) —
+    /// `player`'s hand is briefly empty for the duration of the exchange, so
+    /// this is the only place those cards are visible at all.
+    ExchangeReturn {
+        /// The seat exchanging.
+        player: u8,
+        /// The exchange pool, visible only to `player`'s own view.
+        pool: Vec<Character>,
+        /// How many cards must still be returned.
+        returns_left: u8,
+    },
+    /// The match has ended.
+    GameOver,
 }
 
 /// The rules of Coup for a chosen number of seats.
@@ -648,7 +715,51 @@ impl Game for Coup {
             current: state.current,
             own_hand,
             over: state.is_over(),
+            pending: pending_view(state, viewer),
         }
+    }
+}
+
+/// Builds the [`PendingView`] `viewer` sees for `state`'s current phase.
+fn pending_view(state: &CoupState, viewer: Option<PlayerId>) -> PendingView {
+    match &state.phase {
+        Phase::ChooseAction => PendingView::ChooseAction {
+            actor: state.current,
+        },
+        Phase::Respond { pending } => PendingView::Respond {
+            actor: pending.actor,
+            action: pending.action,
+            claim: pending.claim,
+            responder: pending.to_respond[0],
+        },
+        Phase::RespondToBlock {
+            action,
+            actor,
+            blocker,
+            block_as,
+            to_respond,
+        } => PendingView::RespondToBlock {
+            actor: *actor,
+            blocker: *blocker,
+            action: *action,
+            block_as: *block_as,
+            responder: to_respond[0],
+        },
+        Phase::Lose { who, .. } => PendingView::Lose { who: *who },
+        Phase::ExchangeReturn {
+            player,
+            pool,
+            returns_left,
+        } => PendingView::ExchangeReturn {
+            player: *player,
+            pool: if viewer == Some(PlayerId::new(u32::from(*player))) {
+                pool.clone()
+            } else {
+                Vec::new()
+            },
+            returns_left: *returns_left,
+        },
+        Phase::GameOver => PendingView::GameOver,
     }
 }
 

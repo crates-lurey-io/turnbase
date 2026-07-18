@@ -4,9 +4,8 @@
 //! compile-and-smoke-test that each game's `PrintableGame` impl survives a
 //! few real `App` frames.
 //!
-//! See `interactive.rs`, `interactive_minion_battle.rs`, and
-//! `interactive_coup.rs` for versions of these same games that actually open
-//! a terminal.
+//! See `interactive.rs` and `interactive_coup.rs` for versions of these
+//! same games that actually open a terminal.
 
 #[path = "support/mod.rs"]
 mod support;
@@ -17,7 +16,7 @@ use std::time::Duration;
 
 use retroglyph_core::backend::Headless;
 use retroglyph_core::{Flow, Frame, Terminal, step};
-use support::{CountToTen, DemoCoup, DemoMinionBattle};
+use support::{CountToTen, DemoCoup};
 use turnbase::PlayerId;
 use turnbase_bots::RandomBot;
 use turnbase_simulator::{PlayerAgent, PrintableGame, SimulationRunner, Simulator};
@@ -67,8 +66,5 @@ where
 
 fn main() {
     smoke_test::<CountToTen>("CountToTen", 20);
-    // MinionBattle::TURN_CAP is 100 (one apply == one turn), so 110 frames
-    // guarantees a terminal state regardless of random draws.
-    smoke_test::<DemoMinionBattle>("MinionBattle", 110);
     smoke_test::<DemoCoup>("Coup", 200);
 }

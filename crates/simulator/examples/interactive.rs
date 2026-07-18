@@ -13,7 +13,7 @@ mod support;
 use std::collections::HashMap;
 use std::time::Duration;
 
-use support::CountToTen;
+use support::{CountToTen, random_seed};
 use turnbase::PlayerId;
 use turnbase_bots::RandomBot;
 use turnbase_simulator::{PlayerAgent, Simulator};
@@ -22,10 +22,10 @@ fn main() -> std::io::Result<()> {
     let mut agents: HashMap<PlayerId, PlayerAgent<CountToTen>> = HashMap::new();
     agents.insert(
         PlayerId::new(0),
-        PlayerAgent::Ai(Box::new(RandomBot::new(1))),
+        PlayerAgent::Ai(Box::new(RandomBot::new(random_seed()))),
     );
     agents.insert(PlayerId::new(1), PlayerAgent::Human);
 
-    let simulator = Simulator::new(CountToTen, 0, agents);
+    let simulator = Simulator::new(CountToTen, random_seed(), agents);
     turnbase_simulator::run(simulator, Duration::from_millis(750))
 }
