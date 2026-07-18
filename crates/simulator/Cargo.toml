@@ -1,0 +1,40 @@
+[package]
+name = "turnbase-simulator"
+description = "Turn-based game loop runner for the Turnbase engine, with an optional retroglyph terminal UI"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+# Terminal dashboard (SimulationRunner, PrintableGame) on top of retroglyph.
+# Disable for bare/headless builds: the simulation core (Simulator, PlayerAgent)
+# has zero UI code in its dependency tree either way, so `--no-default-features`
+# only drops the retroglyph crates, not any engine functionality.
+default = ["ui"]
+ui = ["dep:retroglyph-core", "dep:retroglyph-crossterm"]
+
+[dependencies]
+turnbase = { path = "../core" }
+turnbase-bots = { path = "../bots" }
+log = "0.4"
+retroglyph-core = { version = "0.2", optional = true }
+retroglyph-crossterm = { version = "0.1", optional = true }
+
+[dev-dependencies]
+examples = { path = "../../examples" }
+
+[[example]]
+name = "headless_ui"
+required-features = ["ui"]
+
+[[example]]
+name = "interactive"
+required-features = ["ui"]
+
+[[example]]
+name = "interactive_coup"
+required-features = ["ui"]
