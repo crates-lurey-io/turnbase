@@ -1,23 +1,17 @@
-//! Turn-based game loop coordination for [`turnbase`], with an optional
-//! [`retroglyph`](retroglyph_core) terminal UI.
+//! Interactive human client for [`turnbase`]: a fixed [`retroglyph`](retroglyph_core)
+//! terminal dashboard over a [`turnbase_match::Simulator`].
 //!
-//! The simulation core ([`Simulator`], [`PlayerAgent`]) is plain, synchronous
-//! bookkeeping over a [`turnbase::Game`]: it decides whose turn it is, asks a
-//! bot for an action or waits on a human, and applies the result. It has no
-//! terminal or rendering code in its execution path and runs the same way in
-//! a `cargo test` process as it does behind a UI.
+//! The turn loop itself ([`Simulator`], [`PlayerAgent`]) lives in
+//! `turnbase-match` and has no rendering in its call path; this crate adds the
+//! human-facing layer. [`SimulationRunner`] binds straight to `retroglyph-core`
+//! primitives (`Terminal`, `Rect`, `print`) rather than introducing a layout
+//! engine or widget abstraction of its own; a game opts in by implementing
+//! [`PrintableGame`] and drawing into the rect it is handed.
 //!
-//! The `ui` feature (on by default) adds [`SimulationRunner`], a fixed
-//! dashboard driven by `retroglyph-core`'s `App`/`Terminal` loop. It binds
-//! straight to `retroglyph` primitives (`Terminal`, `Rect`, `print`) rather
-//! than introducing a layout engine or widget abstraction of its own; a game
-//! opts in by implementing [`PrintableGame`] and drawing into the rect it is
-//! handed.
+//! [`Simulator`] and [`PlayerAgent`] are re-exported so a dashboard user builds
+//! a match without depending on `turnbase-match` directly.
 
-mod simulator;
-#[cfg(feature = "ui")]
 mod ui;
 
-pub use simulator::{PlayerAgent, Simulator};
-#[cfg(feature = "ui")]
+pub use turnbase_match::{PlayerAgent, Simulator};
 pub use ui::{PrintableGame, SimulationRunner, run};

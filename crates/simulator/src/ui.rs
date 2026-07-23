@@ -18,8 +18,7 @@ use retroglyph_core::event::{Event, KeyCode};
 use retroglyph_core::grid::Rect;
 use retroglyph_core::{App, Backend, Flow, Frame, Terminal};
 use turnbase::{Game, PlayerId};
-
-use crate::Simulator;
+use turnbase_match::Simulator;
 
 /// A [`Game`] that knows how to render itself, for [`SimulationRunner`].
 ///
@@ -335,7 +334,6 @@ where
 ///
 /// # Errors
 /// Returns an `std::io::Error` if the terminal backend fails to initialize.
-#[cfg(feature = "ui")]
 pub fn run<G>(simulator: Simulator<G>, ai_tick: Duration) -> std::io::Result<()>
 where
     G: PrintableGame,

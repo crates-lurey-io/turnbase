@@ -1,4 +1,4 @@
-//! Headless simulation core: an in-memory turn loop over a [`turnbase::Game`].
+//! In-memory turn loop over a [`turnbase::Game`]: seat agents plus a stepper.
 
 use std::collections::HashMap;
 use std::fmt::Debug;
@@ -93,11 +93,11 @@ impl<G: Game> Simulator<G> {
     ///
     /// Iterates a [`HashMap`], so this picks by seat index rather than
     /// insertion order, keeping the result deterministic regardless of hash
-    /// order. [`crate::SimulationRunner`] uses this once, at construction, to
-    /// decide whose [`Game::View`] the dashboard renders from for the whole
-    /// match: a human should never see another seat's hidden information
-    /// (their cards, say) just because it happened to be an AI's turn when
-    /// the frame was drawn.
+    /// order. `turnbase-simulator`'s dashboard uses this once, at
+    /// construction, to decide whose [`Game::View`] it renders from for the
+    /// whole match: a human should never see another seat's hidden
+    /// information (their cards, say) just because it happened to be an AI's
+    /// turn when the frame was drawn.
     #[must_use]
     pub fn primary_human(&self) -> Option<PlayerId> {
         self.agents
@@ -169,5 +169,110 @@ where
         self.log_history.push(format!("{player} chose: {action:?}"));
         self.game.apply(&mut self.state, player, action);
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use turnbase::{ActivePlayers, Game, PlayerId};
+    use turnbase_bots::RandomBot;
+
+    use super::{PlayerAgent, Simulator};
+
+    const P0: PlayerId = PlayerId::new(0);
+    const P1: PlayerId = PlayerId::new(1);
+
+    /// Two seats alternately add 1 to a shared total; whoever reaches 3 wins.
+    /// A self-contained game so this crate's tests need no example crate.
+    struct CountToThree;
+
+    #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+    struct Bump;
+
+    impl Game for CountToThree {
+        type State = u32;
+        type Action = Bump;
+        type View = u32;
+
+        fn new_initial_state(&self, _seed: u64) -> Self::State {
+            0
+        }
+        fn num_players(&self) -> usize {
+            2
+        }
+        fn active_players(&self, state: &Self::State) -> ActivePlayers {
+            if self.is_terminal(state) {
+                ActivePlayers::none()
+            } else {
+                ActivePlayers::one(PlayerId::new(state % 2))
+            }
+        }
+        fn legal_actions(&self, state: &Self::State, _player: PlayerId) -> Vec<Self::Action> {
+            if self.is_terminal(state) {
+                Vec::new()
+            } else {
+                vec![Bump]
+            }
+        }
+        fn apply(&self, state: &mut Self::State, _player: PlayerId, _action: Self::Action) {
+            *state += 1;
+        }
+        fn is_terminal(&self, state: &Self::State) -> bool {
+            *state >= 3
+        }
+        fn reward(&self, state: &Self::State, player: PlayerId) -> f64 {
+            let winner = (state + 1) % 2;
+            if player.index() == winner { 1.0 } else { -1.0 }
+        }
+        fn view(&self, state: &Self::State, _viewer: Option<PlayerId>) -> Self::View {
+            *state
+        }
+    }
+
+    fn ai_agents() -> HashMap<PlayerId, PlayerAgent<CountToThree>> {
+        let mut agents = HashMap::new();
+        agents.insert(P0, PlayerAgent::Ai(Box::new(RandomBot::new(1))));
+        agents.insert(P1, PlayerAgent::Ai(Box::new(RandomBot::new(2))));
+        agents
+    }
+
+    #[test]
+    fn steps_all_ai_seats_to_a_terminal_state() {
+        let mut sim = Simulator::new(CountToThree, 0, ai_agents());
+        let mut steps = 0;
+        while !sim.is_terminal() && sim.step().unwrap() {
+            steps += 1;
+        }
+        assert_eq!(steps, 3, "three bumps reach the target from zero");
+        assert!(sim.is_terminal());
+        assert_eq!(sim.log_history().len(), 3);
+    }
+
+    #[test]
+    fn step_blocks_on_a_human_seat_until_driven() {
+        let mut agents: HashMap<PlayerId, PlayerAgent<CountToThree>> = HashMap::new();
+        agents.insert(P0, PlayerAgent::Human);
+        agents.insert(P1, PlayerAgent::Ai(Box::new(RandomBot::new(7))));
+        let mut sim = Simulator::new(CountToThree, 0, agents);
+
+        assert_eq!(sim.awaiting_human(), Some(P0));
+        assert_eq!(sim.step(), Ok(false), "step refuses to act for a human");
+        assert!(sim.log_history().is_empty());
+
+        sim.select_human_action(P0, Bump).unwrap();
+        assert_eq!(sim.awaiting_human(), None);
+        assert!(sim.step().unwrap(), "the AI seat advances once unblocked");
+        assert_eq!(sim.log_history().len(), 2);
+    }
+
+    #[test]
+    fn primary_human_picks_the_lowest_seat() {
+        let mut agents: HashMap<PlayerId, PlayerAgent<CountToThree>> = HashMap::new();
+        agents.insert(P0, PlayerAgent::Ai(Box::new(RandomBot::new(1))));
+        agents.insert(P1, PlayerAgent::Human);
+        let sim = Simulator::new(CountToThree, 0, agents);
+        assert_eq!(sim.primary_human(), Some(P1));
     }
 }

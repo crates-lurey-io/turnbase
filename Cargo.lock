@@ -567,15 +567,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "turnbase-match"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "turnbase",
+ "turnbase-bots",
+]
+
+[[package]]
 name = "turnbase-simulator"
 version = "0.1.0"
 dependencies = [
  "examples",
- "log",
  "retroglyph-core",
  "retroglyph-crossterm",
  "turnbase",
  "turnbase-bots",
+ "turnbase-match",
 ]
 
 [[package]]
