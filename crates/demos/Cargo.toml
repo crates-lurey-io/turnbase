@@ -1,0 +1,77 @@
+[package]
+name = "turnbase-demos"
+description = "In-browser WASM demos of the Turnbase reference games (not published)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+turnbase = { path = "../core" }
+turnbase-match = { path = "../match" }
+turnbase-bots = { path = "../bots" }
+# No crossterm: the demos render through a browser terminal backend, so the
+# dashboard stack must build for wasm32 (see turnbase-simulator's `crossterm`
+# feature).
+turnbase-simulator = { path = "../simulator", default-features = false }
+retroglyph-core = { version = "0.2" }
+retroglyph-terminal-wasm = { version = "0.1" }
+# A portable Instant: a zero-cost re-export of std::time on native, and backed
+# by the browser's Performance.now() on wasm32, so the demo clock is one type
+# on both targets.
+web-time = "1"
+
+# The reference games, each an optional dependency enabled by a same-named
+# feature so a single game's demo (`--example <game> --features <game>`) links
+# only that game, not all five. Each is pulled with only its backend-generic
+# rendering feature (no CLI, no crossterm) so it compiles for wasm32.
+coup = { path = "../../examples/coup", default-features = false, features = ["printable"], optional = true }
+risk = { path = "../../examples/risk", default-features = false, features = ["printable"], optional = true }
+minion_battle = { path = "../../examples/minion_battle", default-features = false, features = ["printable"], optional = true }
+woodland = { path = "../../examples/woodland", default-features = false, features = ["printable"], optional = true }
+blackjack = { path = "../../examples/blackjack", default-features = false, features = ["app"], optional = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+# Pinned to match retroglyph-terminal-wasm's own wasm-bindgen so the generated
+# JS glue is compatible; the wasm-bindgen CLI installed in CI must match too.
+wasm-bindgen = "=0.2.106"
+console_error_panic_hook = "0.1"
+
+[features]
+# One feature per game. The demo build enables exactly one (plus the harness
+# builds host-side under --all-features for the workspace lint/test jobs, where
+# every example expands to a no-op `fn main` off wasm32).
+coup = ["dep:coup"]
+risk = ["dep:risk"]
+minion_battle = ["dep:minion_battle"]
+woodland = ["dep:woodland"]
+blackjack = ["dep:blackjack"]
+
+[[example]]
+name = "coup"
+path = "examples/coup.rs"
+required-features = ["coup"]
+
+[[example]]
+name = "risk"
+path = "examples/risk.rs"
+required-features = ["risk"]
+
+[[example]]
+name = "minion_battle"
+path = "examples/minion_battle.rs"
+required-features = ["minion_battle"]
+
+[[example]]
+name = "woodland"
+path = "examples/woodland.rs"
+required-features = ["woodland"]
+
+[[example]]
+name = "blackjack"
+path = "examples/blackjack.rs"
+required-features = ["blackjack"]
