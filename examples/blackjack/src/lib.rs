@@ -1,5 +1,7 @@
-//! Blackjack: dealer vs. one player over a single hand, dealt from a shared
-//! shoe.
+//! Blackjack: a scripted dealer versus one player over a match of several
+//! hands, each dealt from a freshly shuffled shoe. The match runs a fixed
+//! number of hands; whoever wins the most hands wins the match (pushes count
+//! for neither), so a single unlucky deal no longer decides everything.
 //!
 //! Pressure-tests four corners of the engine at once:
 //!
@@ -169,10 +171,19 @@ pub struct Table {
     dealer_hand: Vec<Card>,
     hole_revealed: bool,
     phase: Phase,
+    /// The most recently completed hand's result (persists into the next
+    /// hand so the dashboard can show it alongside the running score).
     outcome: Option<Outcome>,
     /// The seat whose most recently dealt card busted their hand, if any --
-    /// consulted only by [`Blackjack::step_reward`] (see its docs).
+    /// consulted only by [`Blackjack::step_reward`] (see its docs). Reset at
+    /// the start of every `apply`, so it names only the just-played step.
     busted: Option<PlayerId>,
+    /// The current hand's index in the match, `0..hands`.
+    round: u32,
+    /// Hands the player has won so far.
+    player_wins: u32,
+    /// Hands the dealer has won so far.
+    dealer_wins: u32,
 }
 
 impl Table {
@@ -209,10 +220,28 @@ impl Table {
         self.phase
     }
 
-    /// The hand's result, once [`Phase::Done`].
+    /// The most recently completed hand's result, if any hand has finished.
     #[must_use]
     pub const fn outcome(&self) -> Option<Outcome> {
         self.outcome
+    }
+
+    /// The current hand's index in the match, `0..hands`.
+    #[must_use]
+    pub const fn round(&self) -> u32 {
+        self.round
+    }
+
+    /// How many hands the player has won so far.
+    #[must_use]
+    pub const fn player_wins(&self) -> u32 {
+        self.player_wins
+    }
+
+    /// How many hands the dealer has won so far.
+    #[must_use]
+    pub const fn dealer_wins(&self) -> u32 {
+        self.dealer_wins
     }
 
     /// The player's current best total.
@@ -255,20 +284,58 @@ pub struct BlackjackView {
     pub shoe_size: usize,
     /// The current phase.
     pub phase: Phase,
-    /// The hand's result, once [`Phase::Done`].
+    /// The most recently completed hand's result, if any.
     pub outcome: Option<Outcome>,
     /// The viewer's own hidden hole card, if they have one right now (only
     /// ever the dealer, before it is revealed).
     pub own_hole_card: Option<Card>,
+    /// The current hand's index in the match, `0..hands`.
+    pub round: u32,
+    /// The total number of hands in the match.
+    pub hands: u32,
+    /// Hands the player has won so far.
+    pub player_wins: u32,
+    /// Hands the dealer has won so far.
+    pub dealer_wins: u32,
 }
 
-/// The rules of a single blackjack hand. Carries no configuration.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
-pub struct Blackjack;
+/// The default number of hands in a match.
+pub const DEFAULT_HANDS: u32 = 6;
+
+/// The rules of a blackjack match: a fixed number of hands played in
+/// sequence, each from its own freshly shuffled shoe.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct Blackjack {
+    hands: u32,
+}
+
+impl Blackjack {
+    /// Creates a match of `hands` hands.
+    ///
+    /// # Panics
+    /// Panics if `hands` is zero (a match needs at least one hand).
+    #[must_use]
+    pub const fn new(hands: u32) -> Self {
+        assert!(hands >= 1, "a match needs at least one hand");
+        Self { hands }
+    }
+
+    /// The number of hands in this match.
+    #[must_use]
+    pub const fn hands(self) -> u32 {
+        self.hands
+    }
+}
+
+impl Default for Blackjack {
+    fn default() -> Self {
+        Self::new(DEFAULT_HANDS)
+    }
+}
 
 /// Moves `card` out of the shoe and hands it to whichever seat `Phase`
 /// indicates is awaiting one, advancing the phase.
-fn deal(state: &mut BlackjackState, card: Card) {
+fn deal(game: Blackjack, state: &mut BlackjackState, card: Card) {
     let index = state
         .public()
         .shoe
@@ -297,7 +364,7 @@ fn deal(state: &mut BlackjackState, card: Card) {
             if best_total(&state.public().player_hand) > 21 {
                 state.public_mut().busted = Some(PLAYER);
                 reveal_hole(state);
-                finish(state, Outcome::DealerWin);
+                end_hand(game, state, Outcome::DealerWin);
             } else {
                 state.public_mut().phase = Phase::PlayerTurn;
             }
@@ -306,7 +373,7 @@ fn deal(state: &mut BlackjackState, card: Card) {
             state.public_mut().dealer_hand.push(card);
             if best_total(&state.public().dealer_hand) > 21 {
                 state.public_mut().busted = Some(DEALER);
-                finish(state, Outcome::PlayerWin);
+                end_hand(game, state, Outcome::PlayerWin);
             } else {
                 state.public_mut().phase = Phase::DealerTurn;
             }
@@ -327,14 +394,60 @@ fn reveal_hole(state: &mut BlackjackState) {
     state.public_mut().hole_revealed = true;
 }
 
-/// Records the terminal `outcome` and ends the hand.
-const fn finish(state: &mut BlackjackState, outcome: Outcome) {
-    state.public_mut().outcome = Some(outcome);
-    state.public_mut().phase = Phase::Done;
+/// Builds a fresh 52-card shoe (four indistinguishable copies of each rank).
+fn fresh_shoe() -> Pile<Card> {
+    let mut shoe = Pile::new();
+    for rank in 1..=13u8 {
+        for _ in 0..4 {
+            shoe.put(Card::new(rank));
+        }
+    }
+    shoe
 }
 
-/// Compares standing totals once the dealer stands without busting.
-fn settle(state: &mut BlackjackState) {
+/// Records `outcome`, credits the winner, then either deals the next hand or
+/// ends the match once every hand has been played.
+fn end_hand(game: Blackjack, state: &mut BlackjackState, outcome: Outcome) {
+    {
+        let table = state.public_mut();
+        table.outcome = Some(outcome);
+        match outcome {
+            Outcome::PlayerWin => table.player_wins += 1,
+            Outcome::DealerWin => table.dealer_wins += 1,
+            Outcome::Push => {}
+        }
+    }
+    let played = state.public().round + 1;
+    if played >= game.hands {
+        state.public_mut().phase = Phase::Done;
+    } else {
+        start_hand(state, played);
+    }
+}
+
+/// Resets the table for hand `round` with a freshly shuffled shoe. Leaves the
+/// per-step `busted` signal and the last `outcome` in place (a later step
+/// clears or overwrites each).
+fn start_hand(state: &mut BlackjackState, round: u32) {
+    let mut shoe = fresh_shoe();
+    // Shuffle with a copy of the state's own generator, then write its
+    // advanced position back: deterministic per seed, distinct from the
+    // chance sampler that later picks among `legal_actions(CHANCE)`.
+    let mut shuffler = *state.rng();
+    shoe.shuffle(&mut shuffler);
+    state.rng_mut().set_position(shuffler.position());
+    let table = state.public_mut();
+    table.shoe = shoe;
+    table.player_hand.clear();
+    table.dealer_hand.clear();
+    table.hole_revealed = false;
+    table.round = round;
+    table.phase = Phase::Opening(0);
+}
+
+/// Compares standing totals once the dealer stands without busting, then ends
+/// the hand.
+fn settle(game: Blackjack, state: &mut BlackjackState) {
     let player = best_total(state.public().player_hand());
     let dealer = best_total(state.public().dealer_hand());
     let outcome = match player.cmp(&dealer) {
@@ -342,7 +455,7 @@ fn settle(state: &mut BlackjackState) {
         std::cmp::Ordering::Less => Outcome::DealerWin,
         std::cmp::Ordering::Equal => Outcome::Push,
     };
-    finish(state, outcome);
+    end_hand(game, state, outcome);
 }
 
 impl Game for Blackjack {
@@ -351,20 +464,17 @@ impl Game for Blackjack {
     type View = BlackjackView;
 
     fn new_initial_state(&self, seed: u64) -> Self::State {
-        let mut shoe = Pile::new();
-        for rank in 1..=13u8 {
-            for _ in 0..4 {
-                shoe.put(Card::new(rank));
-            }
-        }
         let table = Table {
-            shoe,
+            shoe: fresh_shoe(),
             player_hand: Vec::new(),
             dealer_hand: Vec::new(),
             hole_revealed: false,
             phase: Phase::Opening(0),
             outcome: None,
             busted: None,
+            round: 0,
+            player_wins: 0,
+            dealer_wins: 0,
         };
         let mut state = State::new(table, seed);
         // Shuffle with a copy of the state's own generator, then write its
@@ -420,15 +530,18 @@ impl Game for Blackjack {
     }
 
     fn apply(&self, state: &mut Self::State, player: PlayerId, action: Self::Action) {
+        // The bust marker names only the step just played, so clear it before
+        // each step and let a busting deal re-set it (see `step_reward`).
+        state.public_mut().busted = None;
         match (action, player) {
-            (Action::Deal(card), p) if p.is_chance() => deal(state, card),
+            (Action::Deal(card), p) if p.is_chance() => deal(*self, state, card),
             (Action::Hit, p) if p == PLAYER => state.public_mut().phase = Phase::PlayerDraw,
             (Action::Stand, p) if p == PLAYER => {
                 reveal_hole(state);
                 state.public_mut().phase = Phase::DealerTurn;
             }
             (Action::Hit, p) if p == DEALER => state.public_mut().phase = Phase::DealerDraw,
-            (Action::Stand, p) if p == DEALER => settle(state),
+            (Action::Stand, p) if p == DEALER => settle(*self, state),
             _ => {}
         }
     }
@@ -438,13 +551,16 @@ impl Game for Blackjack {
     }
 
     fn reward(&self, state: &Self::State, player: PlayerId) -> f64 {
-        let Some(outcome) = state.public().outcome else {
+        // Meaningful only at the end of the match: whoever won more hands wins
+        // (pushes count for neither), as +1 / -1 / 0 from the player's side.
+        if !matches!(state.public().phase, Phase::Done) {
             return 0.0;
-        };
-        let player_reward = match outcome {
-            Outcome::PlayerWin => 1.0,
-            Outcome::DealerWin => -1.0,
-            Outcome::Push => 0.0,
+        }
+        let table = state.public();
+        let player_reward = match table.player_wins.cmp(&table.dealer_wins) {
+            std::cmp::Ordering::Greater => 1.0,
+            std::cmp::Ordering::Less => -1.0,
+            std::cmp::Ordering::Equal => 0.0,
         };
         if player == PLAYER {
             player_reward
@@ -476,6 +592,10 @@ impl Game for Blackjack {
             phase: table.phase,
             outcome: table.outcome,
             own_hole_card,
+            round: table.round,
+            hands: self.hands,
+            player_wins: table.player_wins,
+            dealer_wins: table.dealer_wins,
         }
     }
 }
@@ -533,9 +653,29 @@ mod tests {
         (state, sampler)
     }
 
+    /// Drives a whole match to its terminal state: the player always stands,
+    /// the dealer follows its script, and chance is sampled from `seed`.
+    fn play_match(game: Blackjack, seed: u64) -> <Blackjack as Game>::State {
+        let mut state = game.new_initial_state(0);
+        let mut sampler = Prng::new(seed);
+        loop {
+            resolve_chance(game, &mut state, &mut sampler);
+            if game.is_terminal(&state) {
+                return state;
+            }
+            let active = game.active_players(&state).iter().next().unwrap();
+            let action = if active == PLAYER {
+                Action::Stand
+            } else {
+                game.legal_actions(&state, active)[0]
+            };
+            game.apply(&mut state, active, action);
+        }
+    }
+
     #[test]
     fn opening_deal_goes_player_dealer_player_hole() {
-        let game = Blackjack;
+        let game = Blackjack::default();
         let (state, _) = opening(game, 1);
         assert_eq!(state.public().player_hand().len(), 2);
         assert_eq!(state.public().dealer_hand().len(), 1, "hole card is hidden");
@@ -544,7 +684,7 @@ mod tests {
 
     #[test]
     fn hole_card_is_hidden_from_player_and_spectator_but_visible_to_dealer() {
-        let game = Blackjack;
+        let game = Blackjack::default();
         let (state, _) = opening(game, 2);
         assert!(game.view(&state, Some(PLAYER)).own_hole_card.is_none());
         assert!(game.view(&state, None).own_hole_card.is_none());
@@ -553,7 +693,8 @@ mod tests {
 
     #[test]
     fn dealer_scripted_action_is_a_singleton() {
-        let game = Blackjack;
+        // A single-hand match, so the hand ending is the match ending.
+        let game = Blackjack::new(1);
         let (mut state, mut sampler) = opening(game, 3);
         // Force to the dealer's turn regardless of what the player drew.
         game.apply(&mut state, PLAYER, Action::Stand);
@@ -574,7 +715,7 @@ mod tests {
 
     #[test]
     fn dealer_stands_on_seventeen_or_more() {
-        let game = Blackjack;
+        let game = Blackjack::default();
         let mut state = game.new_initial_state(0);
         state.public_mut().dealer_hand.push(Card::new(10));
         state.public_mut().dealer_hand.push(Card::new(7));
@@ -584,7 +725,7 @@ mod tests {
 
     #[test]
     fn dealer_hits_under_seventeen() {
-        let game = Blackjack;
+        let game = Blackjack::default();
         let mut state = game.new_initial_state(0);
         state.public_mut().dealer_hand.push(Card::new(10));
         state.public_mut().dealer_hand.push(Card::new(6));
@@ -594,7 +735,8 @@ mod tests {
 
     #[test]
     fn player_bust_ends_the_hand_immediately() {
-        let game = Blackjack;
+        // Single-hand match: the bust ends the match, so the state is terminal.
+        let game = Blackjack::new(1);
         let mut state = game.new_initial_state(0);
         state.public_mut().player_hand.push(Card::new(10));
         state.public_mut().player_hand.push(Card::new(9));
@@ -618,19 +760,21 @@ mod tests {
 
     #[allow(clippy::float_cmp)] // reward() is exactly one of 1.0 / -1.0 / 0.0
     #[test]
-    fn reward_is_win_loss_or_push_and_dealer_is_the_negation() {
-        let game = Blackjack;
-        let mut state = game.new_initial_state(0);
-
+    fn single_hand_match_reward_is_win_loss_or_push() {
+        // Each scenario is its own one-hand match, so the match reward is just
+        // that hand's result.
         for (player_cards, dealer_cards, expected) in [
             (vec![10, 9], vec![10, 6], Outcome::PlayerWin),
             (vec![10, 6], vec![10, 9], Outcome::DealerWin),
             (vec![10, 8], vec![10, 8], Outcome::Push),
         ] {
+            let game = Blackjack::new(1);
+            let mut state = game.new_initial_state(0);
             state.public_mut().player_hand = player_cards.into_iter().map(Card::new).collect();
             state.public_mut().dealer_hand = dealer_cards.into_iter().map(Card::new).collect();
             state.public_mut().phase = Phase::DealerTurn;
             game.apply(&mut state, DEALER, Action::Stand);
+            assert!(game.is_terminal(&state));
             assert_eq!(state.public().outcome(), Some(expected));
 
             let (player_reward, dealer_reward) = match expected {
@@ -643,10 +787,44 @@ mod tests {
         }
     }
 
+    #[test]
+    fn a_match_plays_every_configured_hand_then_ends() {
+        let game = Blackjack::new(4);
+        let state = play_match(game, 11);
+        assert!(game.is_terminal(&state));
+        let table = state.public();
+        assert_eq!(table.round(), game.hands() - 1, "stops on the last hand");
+        // Every hand resolved to exactly one of win / lose / push.
+        let pushes = game.hands() - table.player_wins() - table.dealer_wins();
+        assert_eq!(
+            table.player_wins() + table.dealer_wins() + pushes,
+            game.hands()
+        );
+    }
+
+    #[allow(clippy::float_cmp)] // reward() is exactly one of 1.0 / -1.0 / 0.0
+    #[test]
+    fn match_reward_is_the_sign_of_the_hand_tally() {
+        // The player's reward is the sign of (player wins - dealer wins), and
+        // the dealer's is its negation, across many seeded matches.
+        for seed in 0..16u64 {
+            let game = Blackjack::new(5);
+            let state = play_match(game, seed);
+            let table = state.public();
+            let expected = match table.player_wins().cmp(&table.dealer_wins()) {
+                std::cmp::Ordering::Greater => 1.0,
+                std::cmp::Ordering::Less => -1.0,
+                std::cmp::Ordering::Equal => 0.0,
+            };
+            assert_eq!(game.reward(&state, PLAYER), expected);
+            assert_eq!(game.reward(&state, DEALER), -expected);
+        }
+    }
+
     #[allow(clippy::float_cmp)] // step_reward() is exactly -1.0 or 0.0
     #[test]
     fn step_reward_penalizes_only_the_seat_that_just_busted() {
-        let game = Blackjack;
+        let game = Blackjack::default();
         let mut state = game.new_initial_state(0);
         state.public_mut().player_hand.push(Card::new(10));
         state.public_mut().player_hand.push(Card::new(9));
@@ -663,7 +841,7 @@ mod tests {
 
     #[test]
     fn determinize_keeps_the_players_view_invariant() {
-        let game = Blackjack;
+        let game = Blackjack::default();
         let (state, _) = opening(game, 4);
         let before = game.view(&state, Some(PLAYER));
 
@@ -678,7 +856,7 @@ mod tests {
 
     #[test]
     fn determinize_is_a_clone_once_the_hole_card_is_revealed() {
-        let game = Blackjack;
+        let game = Blackjack::default();
         let (mut state, _) = opening(game, 5);
         game.apply(&mut state, PLAYER, Action::Stand); // reveals the hole card
         let mut rng = Prng::new(1);
@@ -687,30 +865,8 @@ mod tests {
 
     #[test]
     fn same_seed_same_result() {
-        let game = Blackjack;
-        let run = |seed: u64| {
-            let mut state = game.new_initial_state(0);
-            let mut sampler = Prng::new(seed);
-            loop {
-                resolve_chance(game, &mut state, &mut sampler);
-                if game.is_terminal(&state) {
-                    break;
-                }
-                let active = game.active_players(&state).iter().next().unwrap();
-                // Always take the first legal action: deterministic given the
-                // seed, since the dealer's is a singleton and this always picks
-                // Stand for the player once available.
-                let actions = game.legal_actions(&state, active);
-                let action = if active == PLAYER {
-                    Action::Stand
-                } else {
-                    actions[0]
-                };
-                game.apply(&mut state, active, action);
-            }
-            state
-        };
-        assert_eq!(run(42), run(42));
+        let game = Blackjack::default();
+        assert_eq!(play_match(game, 42), play_match(game, 42));
     }
 
     #[test]

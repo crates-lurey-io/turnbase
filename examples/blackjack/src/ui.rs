@@ -15,6 +15,19 @@ impl PrintableGame for Blackjack {
     fn draw_viewport<B: Backend>(&self, view: &Self::View, term: &mut Terminal<B>, area: Rect) {
         let mut y = area.top();
         term.print(area.left(), y, "== Blackjack ==");
+        y = y.saturating_add(1);
+
+        term.print(
+            area.left(),
+            y,
+            &format!(
+                "hand {} of {}   score: you {} - {} dealer",
+                (view.round + 1).min(view.hands),
+                view.hands,
+                view.player_wins,
+                view.dealer_wins
+            ),
+        );
         y = y.saturating_add(2);
 
         term.print(
@@ -41,16 +54,35 @@ impl PrintableGame for Blackjack {
         y = y.saturating_add(1);
 
         if let Some(outcome) = view.outcome {
+            let label = if matches!(view.phase, crate::Phase::Done) {
+                "match over -- last hand"
+            } else {
+                "last hand"
+            };
             term.print(
                 area.left(),
                 y,
-                &format!("result: {}", describe_outcome(outcome)),
+                &format!("{label}: {}", describe_outcome(outcome)),
             );
+            y = y.saturating_add(1);
+        }
+        if matches!(view.phase, crate::Phase::Done) {
+            term.fg(Color::Ansi(AnsiColor::BrightGreen));
+            term.print(area.left(), y, describe_match(view));
+            term.reset_style();
         }
     }
 
     fn get_stats(&self, view: &Self::View) -> Vec<(String, String)> {
         vec![
+            (
+                "hand".to_owned(),
+                format!("{} of {}", (view.round + 1).min(view.hands), view.hands),
+            ),
+            (
+                "score".to_owned(),
+                format!("{} - {}", view.player_wins, view.dealer_wins),
+            ),
             (
                 "your total".to_owned(),
                 best_total(&view.player_hand).to_string(),
@@ -111,7 +143,16 @@ const fn phase_tag(phase: crate::Phase) -> &'static str {
     }
 }
 
-/// One-line description of the terminal outcome.
+/// Declares the match winner from the final hand tally.
+fn describe_match(view: &BlackjackView) -> &'static str {
+    match view.player_wins.cmp(&view.dealer_wins) {
+        std::cmp::Ordering::Greater => "you win the match",
+        std::cmp::Ordering::Less => "dealer wins the match",
+        std::cmp::Ordering::Equal => "the match is a draw",
+    }
+}
+
+/// One-line description of a single hand's outcome.
 const fn describe_outcome(outcome: crate::Outcome) -> &'static str {
     use crate::Outcome;
     match outcome {
