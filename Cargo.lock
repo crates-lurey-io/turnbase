@@ -542,9 +542,12 @@ dependencies = [
 name = "risk"
 version = "0.1.0"
 dependencies = [
+ "retroglyph-core",
  "serde",
  "turnbase",
+ "turnbase-bots",
  "turnbase-cli",
+ "turnbase-simulator",
 ]
 
 [[package]]
