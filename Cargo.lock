@@ -323,9 +323,12 @@ checksum = "88904434abc2901f197fe8cc55f0445e7ded921dba5911dad2e2b39b48e663c4"
 name = "minion_battle"
 version = "0.1.0"
 dependencies = [
+ "retroglyph-core",
  "serde",
  "turnbase",
+ "turnbase-bots",
  "turnbase-cli",
+ "turnbase-simulator",
 ]
 
 [[package]]
@@ -542,9 +545,12 @@ dependencies = [
 name = "risk"
 version = "0.1.0"
 dependencies = [
+ "retroglyph-core",
  "serde",
  "turnbase",
+ "turnbase-bots",
  "turnbase-cli",
+ "turnbase-simulator",
 ]
 
 [[package]]

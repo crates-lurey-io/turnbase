@@ -11,13 +11,22 @@ publish = false
 workspace = true
 
 [features]
-default = ["cli"]
+# Tier 1: `cli` gives the headless/text runner; `ui` adds the retroglyph
+# dashboard on top. `ui` is on by default so `cargo run -p minion_battle`
+# opens the board.
+default = ["ui"]
 cli = ["dep:turnbase-cli"]
+ui = ["cli", "dep:turnbase-simulator", "dep:retroglyph-core", "turnbase-cli/tui"]
 
 [dependencies]
 turnbase = { path = "../../crates/core" }
 serde = { version = "1", features = ["derive"] }
 turnbase-cli = { path = "../../crates/cli", default-features = false, optional = true }
+turnbase-simulator = { path = "../../crates/simulator", optional = true }
+retroglyph-core = { version = "0.2", optional = true }
+
+[dev-dependencies]
+turnbase-bots = { path = "../../crates/bots" }
 
 [[bin]]
 name = "minion_battle"

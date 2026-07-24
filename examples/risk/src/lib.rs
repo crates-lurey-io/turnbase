@@ -18,6 +18,9 @@
 use serde::{Deserialize, Serialize};
 use turnbase::{ActivePlayers, Game, PlayerId, Prng};
 
+#[cfg(feature = "ui")]
+mod ui;
+
 /// Number of territories on the map.
 pub const TERRITORIES: usize = 9;
 
