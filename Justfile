@@ -31,6 +31,19 @@ doc-gen:
     echo '<meta http-equiv="refresh" content="0;url=turnbase/index.html">' > target/doc/index.html
     rm -f target/doc/.lock
 
+# The full GitHub Pages site into target/doc: rustdoc API docs, a self-hosted
+# per-line HTML coverage report under coverage/, and the landing page. This is
+# exactly what the Docs workflow ships to Pages, so it can be previewed locally
+# (serve target/doc over HTTP and open index.html).
+docs-site:
+    cargo doc --workspace --no-deps --all-features
+    cargo llvm-cov --workspace --all-features --html --output-dir target/doc/coverage
+    mv target/doc/coverage/html/* target/doc/coverage/
+    rmdir target/doc/coverage/html
+    cp docs/site/index.html target/doc/index.html
+    sed -i.bak "s/__GIT_SHA__/$(git rev-parse --short HEAD 2>/dev/null || echo unknown)/g" target/doc/index.html && rm -f target/doc/index.html.bak
+    rm -f target/doc/.lock
+
 # ── Test ───────────────────────────────────────────────────────────────────
 
 test *args:
