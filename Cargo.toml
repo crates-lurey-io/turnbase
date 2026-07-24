@@ -14,6 +14,7 @@ members = [
     "examples/rock_paper_scissors",
     "examples/minion_battle",
     "examples/risk",
+    "examples/blackjack",
 ]
 
 [workspace.package]
