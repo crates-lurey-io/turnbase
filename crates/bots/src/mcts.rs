@@ -271,7 +271,8 @@ where
 mod tests {
     use super::Mcts;
     use crate::{Bot, RandomBot, RankedBot};
-    use examples::{HighCard, Move, TicTacToe};
+    use high_card::HighCard;
+    use tic_tac_toe::{Move, TicTacToe};
     use turnbase::{Game, PlayerId};
 
     const P0: PlayerId = PlayerId::new(0);

@@ -220,8 +220,8 @@ where
 mod tests {
     use super::Minimax;
     use crate::{Bot, RandomBot, RankedBot};
-    use examples::{Cell, Move, TicTacToe};
     use proptest::prelude::*;
+    use tic_tac_toe::{Cell, Move, TicTacToe};
     use turnbase::{Game, PlayerId, Prng, Reversible};
 
     const P0: PlayerId = PlayerId::new(0);

@@ -1,0 +1,15 @@
+[package]
+name = "turnbase-match"
+description = "Turn-loop orchestration for the Turnbase engine: seat agents and a match stepper"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+turnbase = { path = "../core" }
+turnbase-bots = { path = "../bots" }
+log = "0.4"
