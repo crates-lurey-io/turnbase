@@ -11,9 +11,15 @@ Everything is a synchronous function from state + action to new state.
 This document records the architecture decisions made for v1 and the reasoning
 behind them. Full research backing each decision lives in `.matan/research*.md`.
 
+This document is about `turnbase-core`. The layer above it (sessions, hosts,
+headless/interactive/networked clients) is described in
+[`docs/design/sessions-and-transports.md`](docs/design/sessions-and-transports.md).
+
 ## Non-goals for v1
 
-- Networking / multiplayer transport (turnbase-core is a library; wire it up yourself)
+- Networking / multiplayer transport in the *core*. The session layer above it
+  handles hosting; the networked-transport shape is designed (not yet built) in
+  [`docs/design/sessions-and-transports.md`](docs/design/sessions-and-transports.md).
 - Rendering / UI of any kind
 - A scripting/DSL layer for effects (post-0.1 stretch — see "Future: scripting")
 - Full MTG-style priority stack (Tier 3 triggers — targeted for v0.2/v0.3)
@@ -512,9 +518,19 @@ turnbase/
   crates/
     core/                     # crate `turnbase`: Game trait, ActivePlayers, RNG, Tier-2 triggers
     bots/                     # crate `turnbase-bots`: RandomBot, minimax/alpha-beta, MCTS helpers
-  examples/                   # crate `examples` (publish = false): reference games
-    src/tic_tac_toe.rs        # reference game validating the trait design
+    match/                    # crate `turnbase-match`: turn loop (Simulator, PlayerAgent), no UI/IO
+    simulator/                # crate `turnbase-simulator`: retroglyph terminal client over match
+    protocol/                 # crate `turnbase-protocol`: typed request/response wire types
+    session/                  # crate `turnbase-session`: Session port, LocalSession, FileSession
+  examples/                   # reference games (publish = false)
 ```
+
+The crates layer strictly: `core` has no opinions; `bots` (search) and
+`match` (turn-loop orchestration) build on it; `simulator` (rendering) builds
+on `match`; `protocol` (wire types, no `turnbase` dependency) and `session`
+(the host/persistence port) build alongside. Nothing on the headless path
+links the terminal UI. The layer above the core is documented in
+[`docs/design/sessions-and-transports.md`](docs/design/sessions-and-transports.md).
 
 Matches the `rg` house style: workspace-level lints (`clippy::all`/`pedantic`/
 `nursery` deny), `resolver = "2"`, shared `[workspace.package]` metadata,
