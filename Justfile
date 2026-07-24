@@ -31,12 +31,21 @@ doc-gen:
     echo '<meta http-equiv="refresh" content="0;url=turnbase/index.html">' > target/doc/index.html
     rm -f target/doc/.lock
 
-# The full GitHub Pages site into target/doc: rustdoc API docs, a self-hosted
-# per-line HTML coverage report under coverage/, and the landing page. This is
-# exactly what the Docs workflow ships to Pages, so it can be previewed locally
-# (serve target/doc over HTTP and open index.html).
+# The full GitHub Pages site into target/doc: rustdoc API docs (shippable
+# libraries only), per-crate + workspace llms.txt, a crates index table, a
+# self-hosted per-line HTML coverage report under coverage/, the WASM demos,
+# and the landing page. This is exactly what the Docs workflow ships to Pages,
+# so it can be previewed locally (serve target/doc over HTTP and open
+# index.html).
+#
+# Only the shippable library crates are documented (see
+# tools/publishable-crates.sh): the example game crates and the non-published
+# demos harness are publish = false, so their rustdoc has no business on the
+# public docs site.
 docs-site:
-    cargo doc --workspace --no-deps --all-features
+    cargo doc --no-deps --all-features $(tools/publishable-crates.sh | jq -r '"-p " + .name' | tr '\n' ' ')
+    tools/gen-llms-txt.sh target/doc
+    tools/gen-crates-index.sh target/doc
     rm -rf target/doc/coverage
     cargo llvm-cov --workspace --all-features --html --output-dir target/doc/coverage
     mv target/doc/coverage/html/* target/doc/coverage/
