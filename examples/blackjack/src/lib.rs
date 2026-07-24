@@ -28,7 +28,7 @@
 use serde::{Deserialize, Serialize};
 use turnbase::{ActivePlayers, Determinize, Game, Pile, PlayerId, Prng, State};
 
-#[cfg(feature = "ui")]
+#[cfg(feature = "app")]
 pub mod tui;
 
 /// Seat 0: the human (or bot) player.

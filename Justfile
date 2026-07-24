@@ -37,9 +37,11 @@ doc-gen:
 # (serve target/doc over HTTP and open index.html).
 docs-site:
     cargo doc --workspace --no-deps --all-features
+    rm -rf target/doc/coverage
     cargo llvm-cov --workspace --all-features --html --output-dir target/doc/coverage
     mv target/doc/coverage/html/* target/doc/coverage/
     rmdir target/doc/coverage/html
+    tools/build-wasm-demos.sh
     cp docs/site/index.html target/doc/index.html
     sed -i.bak "s/__GIT_SHA__/$(git rev-parse --short HEAD 2>/dev/null || echo unknown)/g" target/doc/index.html && rm -f target/doc/index.html.bak
     rm -f target/doc/.lock

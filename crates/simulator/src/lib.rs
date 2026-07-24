@@ -14,4 +14,6 @@
 mod ui;
 
 pub use turnbase_match::{PlayerAgent, Simulator};
-pub use ui::{PrintableGame, SimulationRunner, run};
+#[cfg(feature = "crossterm")]
+pub use ui::run;
+pub use ui::{PrintableGame, SimulationRunner};
