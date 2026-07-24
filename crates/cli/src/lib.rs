@@ -95,14 +95,31 @@ enum Command {
     Play(PlayArgs),
 }
 
+/// Arguments for the interactive `play` command, exposed so a game that passes
+/// its own `play` handler to [`run_with_play`] can read them.
 #[derive(Args)]
-struct PlayArgs {
+pub struct PlayArgs {
     /// Seed for the match. Chosen at random if omitted.
     #[arg(long)]
     seed: Option<u64>,
     /// Seats you control, comma-separated (e.g. `0` or `0,1`). Defaults to seat 0.
     #[arg(long)]
     manual: Option<String>,
+}
+
+impl PlayArgs {
+    /// The seed requested on the command line, if any (otherwise the caller
+    /// picks one, e.g. at random).
+    #[must_use]
+    pub const fn seed(&self) -> Option<u64> {
+        self.seed
+    }
+
+    /// The seats the human asked to control, defaulting to seat 0.
+    #[must_use]
+    pub fn manual_seats(&self) -> Vec<u32> {
+        parse_seats(self.manual.as_deref())
+    }
 }
 
 /// Runs the text/headless CLI for `game`: `new`, `query`, `act`, `self-play`,
@@ -115,6 +132,25 @@ where
     G::Action: DeserializeOwned + Debug,
     G::View: Serialize,
 {
+    run_with_play(game, text_play)
+}
+
+/// Like [`run`], but the game supplies its own interactive `play` handler (a
+/// bespoke UI, say) rather than the built-in text stepper.
+///
+/// The headless `new`/`query`/`act` and `self-play` commands are handled here
+/// exactly as [`run`] does; only the interactive `play` command is delegated
+/// to `play`. This is how a game ships its own terminal UI (see
+/// `examples/blackjack`) without reimplementing the rest of the CLI.
+#[must_use]
+pub fn run_with_play<G, F>(game: G, play: F) -> ExitCode
+where
+    G: Game + Serialize + DeserializeOwned,
+    G::State: Serialize + DeserializeOwned,
+    G::Action: DeserializeOwned + Debug,
+    G::View: Serialize,
+    F: FnOnce(G, &PlayArgs) -> ExitCode,
+{
     match Cli::parse().command {
         Command::New { seed, session } => handle_new(game, seed, session),
         Command::Query { session, player } => handle_query::<G>(&session, player),
@@ -124,7 +160,7 @@ where
             action,
         } => handle_act::<G>(&session, player, &action),
         Command::SelfPlay { seed } => handle_self_play(game, seed),
-        Command::Play(args) => text_play(game, &args),
+        Command::Play(args) => play(game, &args),
     }
 }
 
@@ -139,17 +175,7 @@ where
     G::Action: DeserializeOwned + Debug,
     G::View: Serialize,
 {
-    match Cli::parse().command {
-        Command::New { seed, session } => handle_new(game, seed, session),
-        Command::Query { session, player } => handle_query::<G>(&session, player),
-        Command::Act {
-            session,
-            player,
-            action,
-        } => handle_act::<G>(&session, player, &action),
-        Command::SelfPlay { seed } => handle_self_play(game, seed),
-        Command::Play(args) => tui_play(game, &args),
-    }
+    run_with_play(game, tui_play)
 }
 
 fn handle_new<G>(game: G, seed: Option<u64>, session: Option<PathBuf>) -> ExitCode

@@ -29,7 +29,7 @@ use serde::{Deserialize, Serialize};
 use turnbase::{ActivePlayers, Determinize, Game, Pile, PlayerId, Prng, State};
 
 #[cfg(feature = "ui")]
-mod ui;
+pub mod tui;
 
 /// Seat 0: the human (or bot) player.
 pub const PLAYER: PlayerId = PlayerId::new(0);
