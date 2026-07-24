@@ -174,7 +174,11 @@ fn down_keys(events: &[Event]) -> impl Iterator<Item = KeyCode> + '_ {
 ///
 /// Fixes the dashboard's viewing seat at the lowest human seat (or a neutral
 /// spectator if there is none) each time the match is (re)built, so a human
-/// never sees another seat's hidden information.
+/// never sees another seat's hidden information. That single fixed viewer means
+/// a hidden-info game configured with two or more human seats is local
+/// pass-and-play that shows one seat's view throughout; it is not safe for
+/// competitive hot-seat play of a game with private state (the same limitation
+/// the CLI's text `play` documents).
 pub struct SessionApp<G>
 where
     G: PrintableGame + Clone,
@@ -183,6 +187,9 @@ where
     game: G,
     bots: Vec<BotOption<G>>,
     seats: Vec<SeatKind>,
+    // The seat config as it was when the setup modal opened, restored if the
+    // modal is cancelled with Escape.
+    setup_backup: Vec<SeatKind>,
     seed: u64,
     auto: bool,
     paused: bool,
@@ -215,6 +222,7 @@ where
         Self {
             game,
             bots,
+            setup_backup: seats.clone(),
             seats,
             seed,
             auto: true,
@@ -244,7 +252,12 @@ where
     /// configures seats before the match runs.
     #[must_use]
     pub fn with_setup_open(mut self, open: bool) -> Self {
-        self.setup = open.then_some(0);
+        if open {
+            self.setup_backup = self.seats.clone();
+            self.setup = Some(0);
+        } else {
+            self.setup = None;
+        }
         self
     }
 
@@ -296,9 +309,12 @@ where
         for key in down_keys(events) {
             match key {
                 KeyCode::Escape => self.exit = true,
-                KeyCode::Char('c' | 'C') => self.setup = Some(0),
+                KeyCode::Char('c' | 'C') => {
+                    self.setup_backup = self.seats.clone();
+                    self.setup = Some(0);
+                }
                 KeyCode::Char('r' | 'R') => self.reset(),
-                KeyCode::Char('m' | 'M') => {
+                KeyCode::Char('m' | 'M') | KeyCode::Tab => {
                     self.auto = !self.auto;
                     self.paused = false;
                     self.ai_elapsed = Duration::ZERO;
@@ -388,6 +404,8 @@ where
                     return;
                 }
                 KeyCode::Escape => {
+                    // Cancel: discard the edits made in the modal.
+                    self.seats.clone_from(&self.setup_backup);
                     self.setup = None;
                     return;
                 }
@@ -483,7 +501,7 @@ where
         let seats = self.seats.len();
         #[expect(clippy::cast_possible_truncation, reason = "seat counts are tiny")]
         let rows = seats as u16;
-        let width = 38;
+        let width = 44;
         let height = rows.saturating_add(5);
         let inner = Modal::new(width, height)
             .theme(theme)
@@ -520,7 +538,7 @@ where
             term,
             hint_rect,
             0,
-            std::iter::once("Up/Down seat  Left/Right change  Enter start".to_owned()),
+            std::iter::once("arrows pick   Enter start   Esc cancel".to_owned()),
         );
         term.reset_style();
     }
