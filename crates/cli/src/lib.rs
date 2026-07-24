@@ -31,20 +31,13 @@ use turnbase_protocol::{Request, Response};
 use turnbase_session::FileSession;
 
 #[cfg(feature = "tui")]
-use std::time::Duration;
-#[cfg(feature = "tui")]
-use turnbase_simulator::PrintableGame;
+use turnbase_simulator::{PrintableGame, SessionApp, standard_bots};
 
 /// A guard against a game whose random-play match never terminates (uniform
 /// random Risk, say), so `self-play` and `play` always return instead of
 /// looping forever. Every reference game that does converge finishes far
 /// inside this.
 const STEP_LIMIT: usize = 10_000;
-
-/// The interval a bot-controlled seat waits between moves in the dashboard, so
-/// AI turns are visible rather than flashing past.
-#[cfg(feature = "tui")]
-const TUI_AI_TICK: Duration = Duration::from_millis(500);
 
 #[derive(Parser)]
 #[command(name = "turnbase", version, about)]
@@ -170,9 +163,9 @@ where
 #[must_use]
 pub fn run_tui<G>(game: G) -> ExitCode
 where
-    G: PrintableGame + Serialize + DeserializeOwned,
-    G::State: Serialize + DeserializeOwned,
-    G::Action: DeserializeOwned + Debug,
+    G: PrintableGame + Clone + Serialize + DeserializeOwned,
+    G::State: Clone + Serialize + DeserializeOwned,
+    G::Action: Clone + DeserializeOwned + Debug,
     G::View: Serialize,
 {
     run_with_play(game, tui_play)
@@ -308,14 +301,20 @@ where
 #[cfg(feature = "tui")]
 fn tui_play<G>(game: G, args: &PlayArgs) -> ExitCode
 where
-    G: PrintableGame,
-    G::Action: Debug,
+    G: PrintableGame + Clone,
+    G::State: Clone,
+    G::Action: Clone + Debug,
 {
     let seed = args.seed.unwrap_or_else(random_seed);
-    let manual = parse_seats(args.manual.as_deref());
-    let agents = build_agents(&game, seed, &manual);
-    let sim = Simulator::new(game, seed, agents);
-    match turnbase_simulator::run(sim, TUI_AI_TICK) {
+    // Open the setup modal so the player can pick Human/AI per seat, pre-seeding
+    // the seats they named with --manual as human.
+    let mut app = SessionApp::new(game, standard_bots(), seed).with_setup_open(true);
+    for seat in parse_seats(args.manual.as_deref()) {
+        if let Ok(index) = usize::try_from(seat) {
+            app = app.with_human_seat(index);
+        }
+    }
+    match turnbase_simulator::run_session(app) {
         Ok(()) => ExitCode::SUCCESS,
         Err(err) => fail(err),
     }

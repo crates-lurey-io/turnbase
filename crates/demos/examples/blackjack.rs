@@ -12,7 +12,8 @@ impl Demo for BlackjackDemo {
     type App = BlackjackTui;
 
     fn build(seed: u64) -> Self::App {
-        BlackjackTui::new(all_bots(Blackjack::default(), seed))
+        // with_builder (not new) so the demo's reset key can rebuild the match.
+        BlackjackTui::with_builder(seed, |seed| all_bots(Blackjack::default(), seed))
     }
 
     fn is_over(app: &Self::App) -> bool {

@@ -44,16 +44,20 @@ const TICK: Duration = Duration::from_millis(600);
 #[must_use]
 pub fn play(game: Blackjack, args: &PlayArgs) -> ExitCode {
     let seed = args.seed().unwrap_or_else(random_seed);
-    let mut agents = HashMap::new();
-    agents.insert(PLAYER, PlayerAgent::Human);
-    // The dealer's `legal_actions` is a singleton, so any agent plays its
-    // script; a RandomBot is the simplest way to fill the seat.
-    agents.insert(
-        DEALER,
-        PlayerAgent::Ai(Box::new(RandomBot::new(seed ^ 0x5EED_D00D))),
-    );
-    let sim = Simulator::new(game, seed, agents);
-    match retroglyph_crossterm::Crossterm::run(BlackjackTui::new(sim)) {
+    // A builder (not a one-off Simulator) so the dashboard's reset key can
+    // rebuild the match: seat 0 is you, seat 1 the scripted dealer.
+    let builder = move |seed: u64| {
+        let mut agents = HashMap::new();
+        agents.insert(PLAYER, PlayerAgent::Human);
+        // The dealer's `legal_actions` is a singleton, so any agent plays its
+        // script; a RandomBot is the simplest way to fill the seat.
+        agents.insert(
+            DEALER,
+            PlayerAgent::Ai(Box::new(RandomBot::new(seed ^ 0x5EED_D00D))),
+        );
+        Simulator::new(game, seed, agents)
+    };
+    match retroglyph_crossterm::Crossterm::run(BlackjackTui::with_builder(seed, builder)) {
         Ok(()) => ExitCode::SUCCESS,
         Err(err) => {
             eprintln!("error: {err}");
@@ -70,16 +74,45 @@ pub fn play(game: Blackjack, args: &PlayArgs) -> ExitCode {
 pub struct BlackjackTui {
     sim: Simulator<Blackjack>,
     elapsed: Duration,
+    auto: bool,
+    paused: bool,
+    seed: u64,
+    // Some(builder) enables reset (`r`): the match is rebuilt for the next
+    // seed. `new` leaves this None (reset is a no-op), so a headless test can
+    // still wrap a one-off Simulator.
+    builder: Option<Box<dyn Fn(u64) -> Simulator<Blackjack>>>,
 }
 
 impl BlackjackTui {
     /// Wraps a ready-to-play [`Simulator`] (seat 0 the player, seat 1 the
-    /// dealer) in the dashboard.
+    /// dealer) in the dashboard. Reset (`r`) is disabled; use
+    /// [`BlackjackTui::with_builder`] to enable it.
     #[must_use]
     pub const fn new(sim: Simulator<Blackjack>) -> Self {
         Self {
             sim,
             elapsed: Duration::ZERO,
+            auto: true,
+            paused: false,
+            seed: 0,
+            builder: None,
+        }
+    }
+
+    /// Wraps a fresh match built from `seed` by `builder`, keeping `builder`
+    /// so reset (`r`) can rebuild for the next seed.
+    #[must_use]
+    pub fn with_builder(
+        seed: u64,
+        builder: impl Fn(u64) -> Simulator<Blackjack> + 'static,
+    ) -> Self {
+        Self {
+            sim: builder(seed),
+            elapsed: Duration::ZERO,
+            auto: true,
+            paused: false,
+            seed,
+            builder: Some(Box::new(builder)),
         }
     }
 
@@ -87,6 +120,26 @@ impl BlackjackTui {
     #[must_use]
     pub fn is_terminal(&self) -> bool {
         self.sim.is_terminal()
+    }
+
+    /// Rebuilds the match for a fresh seed, if a builder was supplied.
+    fn reset(&mut self) {
+        if let Some(builder) = &self.builder {
+            self.seed = self.seed.wrapping_add(1);
+            self.sim = builder(self.seed);
+            self.elapsed = Duration::ZERO;
+            self.paused = false;
+        }
+    }
+
+    /// Advances one non-human step (a chance deal or the scripted dealer);
+    /// never acts for the human seat. The only way to progress in Step mode,
+    /// and a manual nudge in Auto.
+    fn step_once(&mut self) {
+        if !self.sim.is_terminal() && self.sim.awaiting_human().is_none() {
+            let _ = self.sim.step();
+            self.elapsed = Duration::ZERO;
+        }
     }
 
     /// Applies the player's Hit/Stand key, ignoring anything illegal.
@@ -158,7 +211,7 @@ impl BlackjackTui {
             term.fg(Color::Ansi(AnsiColor::BrightYellow));
             term.print(left, y, match_result(view));
             term.reset_style();
-            term.print(left, y.saturating_add(2), "Enter to exit, Esc to quit");
+            term.print(left, y.saturating_add(2), "r restart   Enter/Esc to exit");
             return;
         }
         if let Some(outcome) = view.outcome {
@@ -170,9 +223,22 @@ impl BlackjackTui {
             term.print(left, prompt_y, "your move:  [H]it   [S]tand");
             term.reset_style();
         } else {
-            term.print(left, prompt_y, "dealer is playing...");
+            let mode = if self.auto {
+                if self.paused {
+                    "paused"
+                } else {
+                    "dealer is playing..."
+                }
+            } else {
+                "step: press Space"
+            };
+            term.print(left, prompt_y, mode);
         }
-        term.print(left, prompt_y.saturating_add(2), "Esc to quit");
+        term.print(
+            left,
+            prompt_y.saturating_add(2),
+            "Space step  m mode  p pause  r reset  Esc quit",
+        );
     }
 }
 
@@ -183,13 +249,37 @@ impl<B: Backend> App<B> for BlackjackTui {
             return Flow::Exit;
         }
 
+        // Run controls, distinct from the H/S play keys: r reset, m Auto/Step,
+        // p pause, Space step.
+        for event in &events {
+            let Event::Key(key) = event else { continue };
+            if !key.is_down() {
+                continue;
+            }
+            match key.code {
+                KeyCode::Char('r' | 'R') => self.reset(),
+                KeyCode::Char('m' | 'M') | KeyCode::Tab => {
+                    self.auto = !self.auto;
+                    self.paused = false;
+                    self.elapsed = Duration::ZERO;
+                }
+                KeyCode::Char('p' | 'P') => {
+                    if self.auto {
+                        self.paused = !self.paused;
+                    }
+                }
+                KeyCode::Char(' ') => self.step_once(),
+                _ => {}
+            }
+        }
+
         if self.sim.is_terminal() {
             if pressed(&events, KeyCode::Enter) {
                 return Flow::Exit;
             }
         } else if self.sim.awaiting_human() == Some(PLAYER) {
             self.handle_keys(&events);
-        } else {
+        } else if self.auto && !self.paused {
             // Pace the scripted dealer and chance deals so the table animates.
             self.elapsed = self.elapsed.saturating_add(frame.delta);
             if self.elapsed >= TICK {
