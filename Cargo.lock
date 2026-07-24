@@ -93,11 +93,12 @@ name = "blackjack"
 version = "0.1.0"
 dependencies = [
  "retroglyph-core",
+ "retroglyph-crossterm",
  "serde",
  "turnbase",
  "turnbase-bots",
  "turnbase-cli",
- "turnbase-simulator",
+ "turnbase-match",
 ]
 
 [[package]]
