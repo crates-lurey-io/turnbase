@@ -158,7 +158,7 @@ where
 {
     let seed = seed.unwrap_or_else(random_seed);
     let state = game.new_initial_state(seed);
-    let path = match FileSession::create(game, session, state) {
+    let path = match FileSession::create(game, session, state, seed) {
         Ok(path) => path,
         Err(err) => return fail(err),
     };
@@ -240,6 +240,9 @@ where
 
     // Render from a single controlled seat's view (so hidden info stays hidden);
     // with zero or several controlled seats, render the public spectator view.
+    // Multi-seat pass-and-play therefore does not reveal each acting seat's own
+    // private data at its prompt; a hidden-info game wanting that needs the
+    // dashboard (`run_tui`), which fixes one viewing seat per match.
     let viewer = match manual.as_slice() {
         [only] => Some(PlayerId::new(*only)),
         _ => None,
@@ -314,9 +317,11 @@ where
 {
     let mut steps = 0;
     while !sim.is_terminal() && steps < STEP_LIMIT {
-        // Ok(false) means a seat is waiting on a human; in an all-bot match
-        // that cannot happen, so treat it as "nothing left to do" and stop.
+        // Ok(false) at a non-terminal state means a seat is waiting on a human,
+        // or a bot declined (no legal action). Neither should happen in an
+        // all-bot match, so log and stop rather than spin.
         if !sim.step()? {
+            log::debug!("self-play stalled at a non-terminal state; stopping");
             break;
         }
         steps += 1;
@@ -368,8 +373,13 @@ fn prompt_choice<A: Debug>(player: PlayerId, actions: &[A]) -> usize {
         let _ = std::io::stdout().flush();
 
         let mut line = String::new();
-        if std::io::stdin().read_line(&mut line).is_err() {
+        let Ok(bytes) = std::io::stdin().read_line(&mut line) else {
             continue;
+        };
+        // A zero-byte read is end-of-input (piped or closed stdin); take the
+        // first choice rather than looping forever on an empty line.
+        if bytes == 0 {
+            return 0;
         }
         match line.trim().parse::<usize>() {
             Ok(index) if index < actions.len() => return index,

@@ -9,10 +9,10 @@
 //!   mutates it in process. This process *is* the host for as long as the
 //!   value lives. Zero I/O; this is what tests, a long-lived server, and
 //!   self-play hold onto.
-//! - [`FileSession`] is the same authority, but persisted to disk between
-//!   calls instead of held in memory: each call loads, submits one request,
-//!   and saves back. This is what a stateless headless CLI drives, one process
-//!   invocation per request.
+//! - [`FileSession`] is not itself a [`Session`]: it is a stateless adapter
+//!   *around* a per-call [`LocalSession`]. Each call loads a `LocalSession`
+//!   from a JSON save file, submits one request, and saves it back. This is
+//!   what a headless CLI drives, one process invocation per request.
 //!
 //! A future `RemoteSession` would hold no authority at all, only a connection
 //! to a host reached over some transport. That, and any pluggable `Store`

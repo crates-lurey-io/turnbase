@@ -1,14 +1,15 @@
 //! [`FileSession`]: a stateless, file-backed adapter over [`LocalSession`].
 //!
-//! The only place in this crate that touches disk. Each call loads a
-//! [`LocalSession`] from a JSON save file, submits one typed request, and
-//! (only if an action was actually applied) saves it back. This is the shape a
-//! headless CLI drives: one process invocation per request, with the whole
-//! game resumed from a single self-describing file.
+//! Not itself a [`Session`] implementation: it is a thin adapter that, per
+//! call, loads a [`LocalSession`] from a JSON save file, submits one typed
+//! request, and (only if an action was applied) saves it back. This is the
+//! shape a headless CLI drives: one process invocation per request, with the
+//! whole game resumed from a single self-describing file.
 //!
-//! Only the *state* is serialized (into the save file); the typed request and
-//! response pass through unserialized. Actions and views only ever need
-//! serializing at a real wire boundary, which is a future transport's job.
+//! Only the *state* (plus the version and chance sampler) is serialized into
+//! the save file; the typed request and response pass through unserialized.
+//! Actions and views only ever need serializing at a real wire boundary, which
+//! is a future transport's job.
 
 use std::fmt;
 use std::io;
@@ -16,7 +17,7 @@ use std::path::{Path, PathBuf};
 
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use turnbase::{Game, PlayerId};
+use turnbase::{Game, PlayerId, Prng};
 use turnbase_protocol::{PROTOCOL_VERSION, Request, Response};
 
 use crate::{LocalSession, Session};
@@ -26,8 +27,10 @@ use crate::{LocalSession, Session};
 /// It stores the [`Game`] value (its per-match configuration, e.g. player
 /// count) alongside the state, so a resumed session cannot drift from the
 /// config it was created with, and `query`/`act` need no configuration flags
-/// of their own. `protocol_version` is stamped so a stale save fails fast on
-/// an explicit check (see [`Error::ProtocolMismatch`]).
+/// of their own. `chance` is the committed-chance sampler's position, so deck
+/// deals resolved across separate invocations do not resample. `protocol_version`
+/// is stamped so a stale save fails fast on an explicit check (see
+/// [`Error::ProtocolMismatch`]).
 #[derive(Serialize, Deserialize)]
 #[serde(bound(
     serialize = "G: Serialize, G::State: Serialize",
@@ -36,17 +39,20 @@ use crate::{LocalSession, Session};
 struct SaveFile<G: Game> {
     protocol_version: u32,
     version: u64,
+    chance: Prng,
     game: G,
     state: G::State,
 }
 
-/// A stateless, file-backed [`Session`]: create a save, then query or drive it
-/// across separate process invocations.
+/// A stateless, file-backed adapter over [`LocalSession`]: create a save, then
+/// query or drive it across separate process invocations.
 pub struct FileSession;
 
 impl FileSession {
-    /// Creates a new save file holding `game` at `state` (version 0) and
-    /// returns its resolved path. Never overwrites an existing file.
+    /// Creates a new save file holding `game` at `state`, its chance sampler
+    /// seeded from `seed`, and returns its resolved path. Any chance node the
+    /// opening position starts on is resolved before the save is written.
+    /// Never overwrites an existing file.
     ///
     /// `path`'s `None` case generates one under the system temp directory, so
     /// a caller need not name a file up front.
@@ -54,7 +60,12 @@ impl FileSession {
     /// # Errors
     /// Returns [`Error::AlreadyExists`] if `path` is `Some` and a file is
     /// already there, or [`Error::Io`]/[`Error::Serde`] if writing fails.
-    pub fn create<G>(game: G, path: Option<PathBuf>, state: G::State) -> Result<PathBuf, Error>
+    pub fn create<G>(
+        game: G,
+        path: Option<PathBuf>,
+        state: G::State,
+        seed: u64,
+    ) -> Result<PathBuf, Error>
     where
         G: Game + Serialize,
         G::State: Serialize,
@@ -63,11 +74,13 @@ impl FileSession {
         if path.exists() {
             return Err(Error::AlreadyExists(path));
         }
+        let (game, state, version, chance) = LocalSession::new(game, state, seed).into_parts();
         write_save(
             &path,
             &SaveFile {
                 protocol_version: PROTOCOL_VERSION,
-                version: 0,
+                version,
+                chance,
                 game,
                 state,
             },
@@ -99,18 +112,19 @@ impl FileSession {
             return Err(Error::NotFound(path.to_path_buf()));
         }
         let save: SaveFile<G> = read_save(path)?;
-        let mut session = LocalSession::resume(save.game, save.state, save.version);
+        let mut session = LocalSession::resume(save.game, save.state, save.version, save.chance);
         let response = session.submit(player, request);
 
-        // Only an applied action changes state or version; skip the write (and
-        // its serialization cost) on queries and rejected actions.
+        // Only an applied action changes state, version, or the chance sampler;
+        // skip the write (and its serialization cost) on queries and rejects.
         if matches!(response, Response::Ack) {
-            let (game, state, version) = session.into_parts();
+            let (game, state, version, chance) = session.into_parts();
             write_save(
                 path,
                 &SaveFile {
                     protocol_version: PROTOCOL_VERSION,
                     version,
+                    chance,
                     game,
                     state,
                 },
@@ -162,12 +176,18 @@ impl fmt::Display for Error {
 impl std::error::Error for Error {}
 
 fn generate_temp_path() -> PathBuf {
-    let nanos = std::time::SystemTime::now()
+    std::env::temp_dir().join(format!(
+        "turnbase-{}-{}.json",
+        std::process::id(),
+        unique_nanos()
+    ))
+}
+
+fn unique_nanos() -> u128 {
+    std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
-        .as_nanos();
-    let pid = std::process::id();
-    std::env::temp_dir().join(format!("turnbase-{pid}-{nanos}.json"))
+        .as_nanos()
 }
 
 fn read_save<G>(path: &Path) -> Result<SaveFile<G>, Error>
@@ -192,7 +212,15 @@ where
     G::State: Serialize,
 {
     let bytes = serde_json::to_vec_pretty(save).map_err(Error::Serde)?;
-    std::fs::write(path, bytes).map_err(Error::Io)
+    // Write to a sibling temp file then rename over the target, so a crash or a
+    // concurrent reader never sees a half-written save (rename is atomic within
+    // one filesystem).
+    let tmp = path.with_extension(format!("tmp-{}-{}", std::process::id(), unique_nanos()));
+    std::fs::write(&tmp, &bytes).map_err(Error::Io)?;
+    std::fs::rename(&tmp, path).map_err(|err| {
+        let _ = std::fs::remove_file(&tmp);
+        Error::Io(err)
+    })
 }
 
 #[cfg(test)]
@@ -254,6 +282,54 @@ mod tests {
         }
     }
 
+    /// A pure-chance game: `CHANCE` reveals a value 0/1/2, then it is terminal.
+    /// Serializable end to end so it can drive the file adapter.
+    #[derive(Serialize, Deserialize)]
+    struct Reveal;
+
+    impl Game for Reveal {
+        type State = Option<u8>;
+        type Action = u8;
+        type View = Option<u8>;
+
+        fn new_initial_state(&self, _seed: u64) -> Self::State {
+            None
+        }
+        fn num_players(&self) -> usize {
+            0
+        }
+        fn active_players(&self, state: &Self::State) -> ActivePlayers {
+            if state.is_some() {
+                ActivePlayers::none()
+            } else {
+                ActivePlayers::one(PlayerId::CHANCE)
+            }
+        }
+        fn legal_actions(&self, state: &Self::State, player: PlayerId) -> Vec<Self::Action> {
+            if player.is_chance() && state.is_none() {
+                vec![0, 1, 2]
+            } else {
+                Vec::new()
+            }
+        }
+        fn apply(&self, state: &mut Self::State, _player: PlayerId, action: Self::Action) {
+            *state = Some(action);
+        }
+        fn is_terminal(&self, state: &Self::State) -> bool {
+            state.is_some()
+        }
+        fn reward(&self, _state: &Self::State, _player: PlayerId) -> f64 {
+            0.0
+        }
+        fn view(&self, state: &Self::State, _viewer: Option<PlayerId>) -> Self::View {
+            *state
+        }
+    }
+
+    fn bump() -> Request<Bump> {
+        Request::Act(Bump)
+    }
+
     fn state_of(response: &Response<u32>) -> (u64, u32) {
         let Response::State { version, view } = response else {
             panic!("expected a State response, got {response:?}");
@@ -267,7 +343,7 @@ mod tests {
         let path = dir.path().join("game.json");
         std::fs::write(&path, b"anything").unwrap();
 
-        let result = FileSession::create(CountToThree, Some(path), 0);
+        let result = FileSession::create(CountToThree, Some(path), 0, 0);
         assert!(matches!(result, Err(Error::AlreadyExists(_))));
     }
 
@@ -275,7 +351,7 @@ mod tests {
     fn handle_round_trips_state_and_bumps_version_only_on_apply() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("game.json");
-        let path = FileSession::create(CountToThree, Some(path), 0).unwrap();
+        let path = FileSession::create(CountToThree, Some(path), 0, 0).unwrap();
 
         // A query is a no-op: version 0, total 0, file unchanged.
         let response = FileSession::handle::<CountToThree>(&path, P0, Request::Query).unwrap();
@@ -283,7 +359,7 @@ mod tests {
 
         // Applying an action acks and persists the bumped state.
         assert!(matches!(
-            FileSession::handle::<CountToThree>(&path, P0, Request::Act(Bump)).unwrap(),
+            FileSession::handle::<CountToThree>(&path, P0, bump()).unwrap(),
             Response::Ack
         ));
 
@@ -296,12 +372,12 @@ mod tests {
     fn a_rejected_action_does_not_persist() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("game.json");
-        let path = FileSession::create(CountToThree, Some(path), 0).unwrap();
+        let path = FileSession::create(CountToThree, Some(path), 0, 0).unwrap();
 
         // Seat 1 is not active first (total 0 -> seat 0), so this is rejected
         // and nothing is written.
         assert!(matches!(
-            FileSession::handle::<CountToThree>(&path, P1, Request::Act(Bump)).unwrap(),
+            FileSession::handle::<CountToThree>(&path, P1, bump()).unwrap(),
             Response::Error(_)
         ));
         let response = FileSession::handle::<CountToThree>(&path, P0, Request::Query).unwrap();
@@ -320,11 +396,11 @@ mod tests {
     fn a_full_game_reaches_a_terminal_state_through_the_file() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("game.json");
-        let path = FileSession::create(CountToThree, Some(path), 0).unwrap();
+        let path = FileSession::create(CountToThree, Some(path), 0, 0).unwrap();
 
         for round in 0..3 {
             let seat = PlayerId::new(round % 2);
-            FileSession::handle::<CountToThree>(&path, seat, Request::Act(Bump)).unwrap();
+            FileSession::handle::<CountToThree>(&path, seat, bump()).unwrap();
         }
         let response = FileSession::handle::<CountToThree>(&path, P0, Request::Query).unwrap();
         assert_eq!(
@@ -332,5 +408,21 @@ mod tests {
             (3, 3),
             "three bumps, version 3, total 3"
         );
+    }
+
+    #[test]
+    fn create_resolves_an_opening_chance_node_and_persists_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("chance.json");
+        let path = FileSession::create(Reveal, Some(path), None, 5).unwrap();
+
+        // The opening chance deal was resolved before the save was written, so
+        // a fresh load already sees a terminal, revealed value at version 1.
+        let response = FileSession::handle::<Reveal>(&path, P0, Request::Query).unwrap();
+        let Response::State { version, view } = response else {
+            panic!("expected a state response");
+        };
+        assert_eq!(version, 1);
+        assert!(matches!(view, Some(0..=2)));
     }
 }
