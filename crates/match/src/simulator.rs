@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::fmt::Debug;
 
-use turnbase::{Error, Game, PlayerId};
+use turnbase::{Error, Game, PlayerId, Prng, sample_chance};
 use turnbase_bots::Bot;
 
 /// Who is deciding a seat's moves.
@@ -26,14 +26,25 @@ pub enum PlayerAgent<G: Game> {
 /// Pure in-memory bookkeeping: [`Simulator::step`] and
 /// [`Simulator::select_human_action`] are the only ways the position changes,
 /// and both just forward to [`Game::apply`]. There is no terminal, socket, or
-/// timer here, so a simulator runs identically under `cargo test` and under
-/// the `ui`-feature dashboard.
+/// timer here, so a simulator runs identically under `cargo test` and behind
+/// a rendering client.
+///
+/// A chance node ([`PlayerId::CHANCE`] active) is not a seat any agent
+/// controls; [`Simulator::step`] resolves it automatically by sampling from
+/// `chance`, a generator seeded from the match seed but offset so it does not
+/// share a stream with the state's own generator.
 pub struct Simulator<G: Game> {
     game: G,
     state: G::State,
     agents: HashMap<PlayerId, PlayerAgent<G>>,
     log_history: Vec<String>,
+    chance: Prng,
 }
+
+/// Offset mixed into the match seed for the chance sampler, so committed
+/// chance outcomes do not correlate with a game's own in-state generator
+/// (which `new_initial_state` seeds directly from the match seed).
+const CHANCE_SEED_OFFSET: u64 = 0x00C0_FFEE;
 
 impl<G: Game> Simulator<G> {
     /// Starts a match: `game.new_initial_state(seed)` seeded with `seed`, with
@@ -46,6 +57,7 @@ impl<G: Game> Simulator<G> {
             state,
             agents,
             log_history: Vec::new(),
+            chance: Prng::new(seed ^ CHANCE_SEED_OFFSET),
         }
     }
 
@@ -76,10 +88,12 @@ impl<G: Game> Simulator<G> {
     /// [`Simulator::step`] resolves AI seats one at a time.
     #[must_use]
     pub fn awaiting_human(&self) -> Option<PlayerId> {
-        self.game
-            .active_players(&self.state)
-            .iter()
-            .find(|player| matches!(self.agents.get(player), Some(PlayerAgent::Human) | None))
+        self.game.active_players(&self.state).iter().find(|player| {
+            // A chance seat is resolved by `step`, never a human, even
+            // though (like a human) it has no agent-map entry.
+            !player.is_chance()
+                && matches!(self.agents.get(player), Some(PlayerAgent::Human) | None)
+        })
     }
 
     /// Returns whether the match has ended.
@@ -115,10 +129,14 @@ where
 {
     /// Advances the match by one atomic decision.
     ///
-    /// Returns `Ok(true)` if the active seat was AI-controlled and its action
-    /// was committed, `Ok(false)` if the match is already over or the active
-    /// seat is waiting on [`Simulator::select_human_action`], or `Err` if the
-    /// bot chose an action [`Game::is_legal`] rejects.
+    /// Returns `Ok(true)` if an AI seat or a chance node advanced, `Ok(false)`
+    /// if the match is already over or the active seat is waiting on
+    /// [`Simulator::select_human_action`], or `Err` if the bot chose an action
+    /// [`Game::is_legal`] rejects.
+    ///
+    /// A chance node ([`PlayerId::CHANCE`] active) is resolved here by sampling
+    /// a committed outcome, so a driver loop advances past deck deals and dice
+    /// without any per-game wiring.
     ///
     /// # Errors
     /// Returns [`Error::IllegalAction`] if the active bot's chosen action is
@@ -130,6 +148,16 @@ where
         let Some(player) = self.game.active_players(&self.state).iter().next() else {
             return Ok(false);
         };
+        if player.is_chance() {
+            let Some(action) = sample_chance(&self.game, &self.state, &mut self.chance) else {
+                return Ok(false);
+            };
+            log::debug!("{player} revealed: {action:?}");
+            self.log_history
+                .push(format!("{player} revealed: {action:?}"));
+            self.game.apply(&mut self.state, player, action);
+            return Ok(true);
+        }
         let Some(PlayerAgent::Ai(bot)) = self.agents.get_mut(&player) else {
             return Ok(false);
         };
@@ -274,5 +302,60 @@ mod tests {
         agents.insert(P1, PlayerAgent::Human);
         let sim = Simulator::new(CountToThree, 0, agents);
         assert_eq!(sim.primary_human(), Some(P1));
+    }
+
+    /// One chance node reveals a value 0/1/2, then the match ends. Nothing
+    /// else acts, so it exercises chance resolution in isolation.
+    struct RevealOnce;
+
+    impl Game for RevealOnce {
+        type State = Option<u8>;
+        type Action = u8;
+        type View = Option<u8>;
+
+        fn new_initial_state(&self, _seed: u64) -> Self::State {
+            None
+        }
+        fn num_players(&self) -> usize {
+            0
+        }
+        fn active_players(&self, state: &Self::State) -> ActivePlayers {
+            if state.is_some() {
+                ActivePlayers::none()
+            } else {
+                ActivePlayers::one(PlayerId::CHANCE)
+            }
+        }
+        fn legal_actions(&self, state: &Self::State, player: PlayerId) -> Vec<Self::Action> {
+            if player.is_chance() && state.is_none() {
+                vec![0, 1, 2]
+            } else {
+                Vec::new()
+            }
+        }
+        fn apply(&self, state: &mut Self::State, _player: PlayerId, action: Self::Action) {
+            *state = Some(action);
+        }
+        fn is_terminal(&self, state: &Self::State) -> bool {
+            state.is_some()
+        }
+        fn reward(&self, _state: &Self::State, _player: PlayerId) -> f64 {
+            0.0
+        }
+        fn view(&self, state: &Self::State, _viewer: Option<PlayerId>) -> Self::View {
+            *state
+        }
+    }
+
+    #[test]
+    fn step_auto_resolves_a_chance_node() {
+        // No agents at all: the only active seat is CHANCE, which `step`
+        // samples and commits without anyone controlling it.
+        let mut sim = Simulator::new(RevealOnce, 7, HashMap::new());
+        assert_eq!(sim.awaiting_human(), None, "a chance seat is not a human");
+        assert!(sim.step().unwrap(), "the chance node advanced");
+        assert!(sim.is_terminal());
+        assert!(matches!(sim.state(), Some(0..=2)));
+        assert_eq!(sim.log_history().len(), 1);
     }
 }
