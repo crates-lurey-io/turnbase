@@ -82,9 +82,11 @@ between them.
 
 All six reference games run the same way (`cargo run -p <game> -- <command>`):
 `tic_tac_toe`, `coup`, `high_card`, `rock_paper_scissors`, `minion_battle`, and
-`risk`. Only `coup` is Tier 1; the rest are Tier 0. Some games do not converge
-under uniform-random `self-play` (Risk, for one), which the runner reports
-honestly rather than looping forever.
+`risk`. `coup`, `risk`, and `minion_battle` are Tier 1 (a `PrintableGame`
+dashboard, on by default; build `--no-default-features --features cli` for
+text-only). `tic_tac_toe`, `high_card`, and `rock_paper_scissors` are Tier 0.
+Some games do not converge under uniform-random `self-play` (Risk, for one),
+which the runner reports honestly rather than looping forever.
 
 ## Contributing
 

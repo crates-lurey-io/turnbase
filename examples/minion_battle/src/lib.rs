@@ -11,6 +11,9 @@
 use serde::{Deserialize, Serialize};
 use turnbase::{ActivePlayers, EffectSystem, Game, PlayerId, resolve_effects};
 
+#[cfg(feature = "ui")]
+mod ui;
+
 /// A draw is declared after this many turns so games always terminate.
 const TURN_CAP: u16 = 100;
 
