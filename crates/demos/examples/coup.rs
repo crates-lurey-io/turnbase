@@ -2,16 +2,21 @@
 
 use coup::Coup;
 use turnbase_demos::{Demo, dashboard, demo_entry};
-use turnbase_simulator::SimulationRunner;
+use turnbase_simulator::{SessionApp, ismcts_bot, mcts_bot, random_bot};
 
 #[derive(Default)]
 struct CoupDemo;
 
 impl Demo for CoupDemo {
-    type App = SimulationRunner<Coup>;
+    type App = SessionApp<Coup>;
 
     fn build(seed: u64) -> Self::App {
-        dashboard(Coup::new(4), seed)
+        // Coup implements Determinize, so ISMCTS is on offer alongside MCTS.
+        dashboard(
+            Coup::new(4),
+            vec![random_bot(), mcts_bot(), ismcts_bot()],
+            seed,
+        )
     }
 
     fn is_over(app: &Self::App) -> bool {

@@ -605,6 +605,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "retroglyph-widgets"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f817a3cf8f51876190752f2b3ce42ce59edc6f36171f93ddc05eca52af5491f8"
+dependencies = [
+ "retroglyph-core",
+ "unicode-width",
+]
+
+[[package]]
 name = "risk"
 version = "0.1.0"
 dependencies = [
@@ -906,7 +916,9 @@ version = "0.1.0"
 dependencies = [
  "retroglyph-core",
  "retroglyph-crossterm",
+ "retroglyph-widgets",
  "turnbase",
+ "turnbase-bots",
  "turnbase-match",
 ]
 

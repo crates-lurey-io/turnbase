@@ -9,7 +9,7 @@
 //! the same way `retroglyph-examples` builds one `[[example]]` at a time.
 //!
 //! A demo runs an all-bot self-play match (see [`all_bots`]) through the exact
-//! same App the native client uses -- [`SimulationRunner`] for the
+//! same App the native client uses -- the interactive `SessionApp` for the
 //! `PrintableGame` dashboard games via [`dashboard`], or a game's own App
 //! (e.g. blackjack's `BlackjackTui`) -- so it animates with no input and looks
 //! identical to the terminal client. When the match ends, [`WasmDemo`]
@@ -24,12 +24,8 @@ use retroglyph_terminal_wasm::TerminalWasm;
 use turnbase::{Game, PlayerId};
 use turnbase_bots::RandomBot;
 use turnbase_match::{PlayerAgent, Simulator};
-use turnbase_simulator::{PrintableGame, SimulationRunner};
+use turnbase_simulator::{BotOption, PrintableGame, SessionApp};
 use web_time::Instant;
-
-/// How long an AI seat waits between moves in a dashboard demo, so the play is
-/// watchable rather than flashing past.
-pub const AI_TICK: Duration = Duration::from_millis(450);
 
 /// How long to linger on a finished match before restarting it with a fresh
 /// seed.
@@ -61,15 +57,18 @@ pub trait Demo: Default {
     fn is_over(app: &Self::App) -> bool;
 }
 
-/// Builds an all-bot [`SimulationRunner`] for a `PrintableGame`, polling each
-/// AI seat every [`AI_TICK`]. The dashboard [`Demo::build`] for every
-/// `PrintableGame` game.
-pub fn dashboard<G>(game: G, seed: u64) -> SimulationRunner<G>
+/// Builds an interactive [`SessionApp`] for a `PrintableGame`.
+///
+/// Runs all-bot auto-play out of the box; the viewer can press `c` to
+/// configure seats, pick an AI type, take a seat, step, or reset. The
+/// dashboard [`Demo::build`] for every `PrintableGame` game; `bots` is the
+/// per-game set of AI types the setup modal offers.
+pub fn dashboard<G>(game: G, bots: Vec<BotOption<G>>, seed: u64) -> SessionApp<G>
 where
-    G: PrintableGame,
+    G: PrintableGame + Clone,
     G::Action: Debug,
 {
-    SimulationRunner::new(all_bots(game, seed), AI_TICK)
+    SessionApp::new(game, bots, seed)
 }
 
 /// Builds a [`Simulator`] for `game` with every seat driven by its own

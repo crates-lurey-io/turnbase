@@ -2,16 +2,16 @@
 
 use minion_battle::MinionBattle;
 use turnbase_demos::{Demo, dashboard, demo_entry};
-use turnbase_simulator::SimulationRunner;
+use turnbase_simulator::{SessionApp, standard_bots};
 
 #[derive(Default)]
 struct MinionBattleDemo;
 
 impl Demo for MinionBattleDemo {
-    type App = SimulationRunner<MinionBattle>;
+    type App = SessionApp<MinionBattle>;
 
     fn build(seed: u64) -> Self::App {
-        dashboard(MinionBattle, seed)
+        dashboard(MinionBattle, standard_bots(), seed)
     }
 
     fn is_over(app: &Self::App) -> bool {

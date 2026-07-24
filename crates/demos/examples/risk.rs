@@ -2,16 +2,16 @@
 
 use risk::Risk;
 use turnbase_demos::{Demo, dashboard, demo_entry};
-use turnbase_simulator::SimulationRunner;
+use turnbase_simulator::{SessionApp, standard_bots};
 
 #[derive(Default)]
 struct RiskDemo;
 
 impl Demo for RiskDemo {
-    type App = SimulationRunner<Risk>;
+    type App = SessionApp<Risk>;
 
     fn build(seed: u64) -> Self::App {
-        dashboard(Risk::new(3), seed)
+        dashboard(Risk::new(3), standard_bots(), seed)
     }
 
     fn is_over(app: &Self::App) -> bool {

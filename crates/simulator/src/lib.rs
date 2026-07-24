@@ -11,8 +11,13 @@
 //! [`Simulator`] and [`PlayerAgent`] are re-exported so a dashboard user builds
 //! a match without depending on `turnbase-match` directly.
 
+mod dashboard;
+mod session;
 mod ui;
 
+#[cfg(feature = "crossterm")]
+pub use session::run_session;
+pub use session::{BotOption, SessionApp, ismcts_bot, mcts_bot, random_bot, standard_bots};
 pub use turnbase_match::{PlayerAgent, Simulator};
 #[cfg(feature = "crossterm")]
 pub use ui::run;
