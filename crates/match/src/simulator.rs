@@ -152,9 +152,15 @@ where
             let Some(action) = sample_chance(&self.game, &self.state, &mut self.chance) else {
                 return Ok(false);
             };
+            // The player-facing log must not carry the concrete outcome: a
+            // committed chance move often deals a card that is hidden from
+            // some seat (a blackjack hole card, a Hanabi draw), and the log
+            // strip is not redacted per viewer the way `Game::view` is. Public
+            // outcomes still surface through the view; the log only narrates
+            // that a chance move happened. The developer `debug!` keeps the
+            // detail for determinism debugging (it is not shown in any UI).
             log::debug!("{player} revealed: {action:?}");
-            self.log_history
-                .push(format!("{player} revealed: {action:?}"));
+            self.log_history.push(format!("{player} moved"));
             self.game.apply(&mut self.state, player, action);
             return Ok(true);
         }
@@ -357,5 +363,21 @@ mod tests {
         assert!(sim.is_terminal());
         assert!(matches!(sim.state(), Some(0..=2)));
         assert_eq!(sim.log_history().len(), 1);
+    }
+
+    #[test]
+    fn chance_outcomes_are_not_leaked_into_the_log() {
+        // Whatever value the chance node commits, the log entry must not
+        // contain it, so a hidden dealt card never shows in the log strip.
+        for seed in 0..32u64 {
+            let mut sim = Simulator::new(RevealOnce, seed, HashMap::new());
+            assert!(sim.step().unwrap());
+            let revealed = sim.state().unwrap();
+            let entry = &sim.log_history()[0];
+            assert!(
+                !entry.contains(&revealed.to_string()),
+                "log entry {entry:?} leaked the chance outcome {revealed}"
+            );
+        }
     }
 }
