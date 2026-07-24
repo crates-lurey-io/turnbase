@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0d1117" />
+    <title>turnbase</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        background: #0d1117;
+        color: #e6edf3;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+          sans-serif;
+        line-height: 1.5;
+        min-height: 100%;
+      }
+      body {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 3rem 1.25rem 4rem;
+      }
+      main {
+        width: 100%;
+        max-width: 46rem;
+      }
+      h1 {
+        font-size: 2.5rem;
+        letter-spacing: -0.02em;
+        font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+      }
+      p.tagline {
+        color: #8b949e;
+        margin: 0.5rem 0 2rem;
+        font-size: 1.05rem;
+      }
+      .cards {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+        gap: 1rem;
+      }
+      a.card {
+        display: block;
+        border: 1px solid #30363d;
+        border-radius: 10px;
+        padding: 1.25rem;
+        background: #161b22;
+        text-decoration: none;
+        color: inherit;
+        transition: border-color 0.15s ease, transform 0.15s ease;
+      }
+      a.card:hover {
+        border-color: #58a6ff;
+        transform: translateY(-2px);
+      }
+      a.card.soon {
+        opacity: 0.55;
+        pointer-events: none;
+      }
+      a.card h2 {
+        font-size: 1.15rem;
+        margin-bottom: 0.35rem;
+      }
+      a.card p {
+        color: #8b949e;
+        font-size: 0.9rem;
+      }
+      .badge {
+        display: inline-block;
+        font-size: 0.7rem;
+        color: #d29922;
+        border: 1px solid #d29922;
+        border-radius: 999px;
+        padding: 0 0.5rem;
+        margin-left: 0.5rem;
+        vertical-align: middle;
+      }
+      footer {
+        margin-top: 2.5rem;
+        color: #6e7681;
+        font-size: 0.8rem;
+      }
+      footer a {
+        color: #58a6ff;
+        text-decoration: none;
+      }
+      code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        background: #161b22;
+        border: 1px solid #30363d;
+        border-radius: 5px;
+        padding: 0.05rem 0.35rem;
+        font-size: 0.85em;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>turnbase</h1>
+      <p class="tagline">
+        Headless, deterministic turn-based game engine core for Rust. Define a game once as pure
+        functions and get simulation, AI search, and headless playtesting for free.
+      </p>
+
+      <div class="cards">
+        <a class="card" href="./turnbase/index.html">
+          <h2>API Docs &rarr;</h2>
+          <p>
+            rustdoc for every crate: the <code>Game</code> trait, bots, the match loop, sessions,
+            and the reference games.
+          </p>
+        </a>
+        <a class="card" href="./coverage/index.html">
+          <h2>Coverage &rarr;</h2>
+          <p>
+            The per-line HTML coverage report for this commit, the same view <code>just
+            coverage</code> produces locally.
+          </p>
+        </a>
+        <a class="card soon" href="./demos/">
+          <h2>Interactive Demos<span class="badge">soon</span></h2>
+          <p>WASM builds of each reference game, playable in the browser.</p>
+        </a>
+      </div>
+
+      <footer>
+        Built from
+        <a href="https://github.com/crates-lurey-io/turnbase">crates-lurey-io/turnbase</a>
+        &middot; <code>__GIT_SHA__</code>
+      </footer>
+    </main>
+  </body>
+</html>
