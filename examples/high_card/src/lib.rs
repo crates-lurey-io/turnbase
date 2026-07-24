@@ -7,10 +7,11 @@
 
 use std::cmp::Ordering;
 
+use serde::{Deserialize, Serialize};
 use turnbase::{ActivePlayers, Game, Pile, PlayerId, PlayerView, Reversible, State};
 
 /// Rules for a high-card match over a `deck_size`-card deck.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct HighCard {
     deck_size: u8,
 }
@@ -49,7 +50,7 @@ impl Default for HighCard {
 }
 
 /// Public table state: the remaining deck and how many cards have been dealt.
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct Table {
     deck: Pile<u8>,
     dealt: u8,
@@ -70,7 +71,7 @@ impl Table {
 }
 
 /// Dealing one card from the deck to the next seat.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum Action {
     /// Deal the given card value.
     Deal(u8),

@@ -35,9 +35,11 @@ use std::time::Duration;
 #[cfg(feature = "tui")]
 use turnbase_simulator::PrintableGame;
 
-/// A guard against a game whose random-play match never terminates, so
-/// `self-play` and `play` always return instead of looping forever.
-const STEP_LIMIT: usize = 100_000;
+/// A guard against a game whose random-play match never terminates (uniform
+/// random Risk, say), so `self-play` and `play` always return instead of
+/// looping forever. Every reference game that does converge finishes far
+/// inside this.
+const STEP_LIMIT: usize = 10_000;
 
 /// The interval a bot-controlled seat waits between moves in the dashboard, so
 /// AI turns are visible rather than flashing past.
@@ -342,8 +344,17 @@ where
     }
 }
 
-/// Prints each seat's terminal reward and the move count.
+/// Prints each seat's terminal reward and the move count, or an honest note if
+/// the match hit the step guard without finishing (rewards are only meaningful
+/// at a terminal state).
 fn print_outcome<G: Game>(sim: &Simulator<G>) {
+    if !sim.is_terminal() {
+        println!(
+            "=== unfinished after {} move(s) (hit the step limit) ===",
+            sim.log_history().len()
+        );
+        return;
+    }
     let game = sim.game();
     let rewards: Vec<String> = (0..game.num_players())
         .map(|seat| {

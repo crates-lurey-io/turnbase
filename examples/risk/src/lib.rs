@@ -15,6 +15,7 @@
 //! pair removes an army; emptying a territory conquers it. Everything is
 //! deterministic given the seed, so matches snapshot and replay.
 
+use serde::{Deserialize, Serialize};
 use turnbase::{ActivePlayers, Game, PlayerId, Prng};
 
 /// Number of territories on the map.
@@ -47,7 +48,7 @@ const ADJACENCY: [&[u8]; TERRITORIES] = [
 const CONTINENTS: [(&[u8], u8); 3] = [(&[0, 1, 2], 2), (&[3, 4, 5], 2), (&[6, 7, 8], 2)];
 
 /// The phase of the current player's turn.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum Phase {
     /// Placing reinforcement armies onto owned territories.
     Reinforce,
@@ -58,7 +59,7 @@ pub enum Phase {
 }
 
 /// A single decision. The legal set is phase-dependent.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum Action {
     /// Place one reinforcement on this owned territory.
     Place(u8),
@@ -76,7 +77,7 @@ pub enum Action {
 
 /// A Risk position: who owns each territory, the armies on it, and whose
 /// structured turn is in progress.
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct RiskState {
     owner: [u8; TERRITORIES],
     armies: [u32; TERRITORIES],
@@ -197,7 +198,7 @@ impl RiskState {
 
 /// What a player observes. Risk is a perfect-information game, so a view is the
 /// whole position minus the engine's generator.
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct RiskView {
     /// Owner of each territory.
     pub owner: Vec<u8>,
@@ -212,7 +213,7 @@ pub struct RiskView {
 }
 
 /// The rules of simplified Risk for a chosen number of seats.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct Risk {
     seats: u8,
 }

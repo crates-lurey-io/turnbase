@@ -7,13 +7,14 @@
 //! the public zone (revealing both throws). Submission order does not affect the
 //! result.
 
+use serde::{Deserialize, Serialize};
 use turnbase::{ActivePlayers, Game, PlayerId, PlayerView, State};
 
 const P0: PlayerId = PlayerId::new(0);
 const P1: PlayerId = PlayerId::new(1);
 
 /// A throw. Also the action type: a seat's move is the throw it commits.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum Throw {
     /// Beats scissors, loses to paper.
     Rock,
@@ -36,7 +37,7 @@ impl Throw {
 
 /// The revealed result of a round, written to the public zone once both seats
 /// have thrown.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct Resolution {
     /// The throws, indexed by seat.
     pub throws: [Throw; 2],
@@ -45,7 +46,7 @@ pub struct Resolution {
 }
 
 /// Public zone: empty until the round resolves, then the revealed result.
-#[derive(Clone, PartialEq, Eq, Debug, Default)]
+#[derive(Clone, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
 pub struct Table {
     result: Option<Resolution>,
 }
@@ -59,7 +60,7 @@ impl Table {
 }
 
 /// The rules. Carries no configuration.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
 pub struct RockPaperScissors;
 
 /// Public table plus each seat's secret throw.

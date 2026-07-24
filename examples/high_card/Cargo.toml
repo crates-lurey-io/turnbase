@@ -10,8 +10,18 @@ publish = false
 [lints]
 workspace = true
 
+[features]
+default = ["cli"]
+cli = ["dep:turnbase-cli"]
+
 [dependencies]
-turnbase = { path = "../../crates/core" }
+turnbase = { path = "../../crates/core", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
+turnbase-cli = { path = "../../crates/cli", default-features = false, optional = true }
 
 [dev-dependencies]
 proptest = "1"
+
+[[bin]]
+name = "high_card"
+required-features = ["cli"]

@@ -8,13 +8,14 @@
 //! in order, never inline. Without triggered effects this game would not need
 //! the engine, which is why it is the motivating example.
 
+use serde::{Deserialize, Serialize};
 use turnbase::{ActivePlayers, EffectSystem, Game, PlayerId, resolve_effects};
 
 /// A draw is declared after this many turns so games always terminate.
 const TURN_CAP: u16 = 100;
 
 /// A minion on the board.
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct Minion {
     /// Unique within a match.
     pub id: u32,
@@ -27,7 +28,7 @@ pub struct Minion {
 }
 
 /// What a minion does when it dies.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum Deathrattle {
     /// Deal this much to every enemy minion (can chain into more deaths).
     DamageAllEnemyMinions(i32),
@@ -36,7 +37,7 @@ pub enum Deathrattle {
 }
 
 /// The target of an attack.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum Target {
     /// The enemy hero.
     Hero,
@@ -45,7 +46,7 @@ pub enum Target {
 }
 
 /// A move: attack with one of your minions, or end your turn.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum Action {
     /// Attack `target` with your minion `attacker`.
     Attack {
@@ -59,7 +60,7 @@ pub enum Action {
 }
 
 /// One atomic effect resolved through the Tier-2 queue.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum Effect {
     /// Deal `amount` to minion `id` on `side`.
     DamageMinion {
@@ -80,7 +81,7 @@ pub enum Effect {
 }
 
 /// A battle position: two heroes, two boards, and the turn counter.
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct Battle {
     heroes: [i32; 2],
     boards: [Vec<Minion>; 2],
@@ -114,7 +115,7 @@ impl Battle {
 }
 
 /// The rules. The starting boards are fixed so the example is deterministic.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
 pub struct MinionBattle;
 
 impl MinionBattle {
