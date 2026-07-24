@@ -23,7 +23,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@v2
         with:
-          # wasm-bindgen-cli must match crates/web/Cargo.toml's wasm-bindgen.
+          # wasm-bindgen-cli must match crates/demos/Cargo.toml's wasm-bindgen.
           tool: just,cargo-llvm-cov,wasm-bindgen-cli@0.2.106
       - uses: cargo-bins/cargo-binstall@v1.13.0
       # Generates the per-crate and workspace llms.txt files (see

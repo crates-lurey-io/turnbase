@@ -37,7 +37,7 @@
         padding: 0.4rem;
       }
       #screen .terminal { height: 100%; }
-      p.hint { color: #8b949e; font-size: 0.8rem; text-align: center; max-width: 40rem; }
+      p.hint { color: #8b949e; font-size: 0.8rem; text-align: center; max-width: 42rem; }
       a { color: #58a6ff; text-decoration: none; font-size: 0.85rem; }
     </style>
   </head>
@@ -46,25 +46,27 @@
     <div id="screen"></div>
     <p class="hint">
       AI self-play: bots take every seat, and the match restarts with a new seed when it ends.
-      Rendered as real ANSI/SGR escapes via
-      <a href="https://xtermjs.org/">xterm.js</a> &mdash; the same
-      <code>PrintableGame</code>/App code the native <code>crossterm</code> client runs, compiled
-      to WebAssembly.
+      Focus the terminal and use the arrow keys / Enter / Esc / letters to interact. Rendered as
+      real ANSI/SGR escapes via <a href="https://xtermjs.org/">xterm.js</a> &mdash; the same App
+      the native <code>crossterm</code> client runs, compiled to WebAssembly.
     </p>
     <a href="../">&larr; All demos</a>
 
     <script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@6.0.0/lib/xterm.js"></script>
     <script type="module">
-      import init, { Demo } from "../pkg/turnbase_web.js";
+      import init, {
+        wasm_demo_init,
+        wasm_demo_tick,
+        wasm_demo_key,
+        wasm_demo_resize,
+      } from "./__GAME__.js";
 
-      const GAME = "__GAME__";
       const COLS = 96;
       const ROWS = 32;
 
       // Mirrors retroglyph_terminal_wasm::decode_key_event: named keys use
       // codepoints above the valid char range; printable characters pass
-      // through as their codepoint. Demos are AI self-play, so input is
-      // optional, but arrows/Enter are wired up anyway.
+      // through as their codepoint.
       const BASE = 0x0011_0000;
       const NAMED = {
         "\r": BASE + 1,
@@ -89,25 +91,24 @@
         term.open(document.getElementById("screen"));
 
         const seed = (Math.random() * 0xffffffff) >>> 0;
-        const demo = new Demo(GAME, COLS, ROWS, seed);
+        wasm_demo_init(COLS, ROWS, seed);
+        wasm_demo_resize(COLS, ROWS);
 
         term.onData((data) => {
           if (data in NAMED) {
-            demo.key(NAMED[data], 0);
+            wasm_demo_key(NAMED[data], 0);
           } else if (data.length === 1) {
-            demo.key(data.codePointAt(0), 0);
+            wasm_demo_key(data.codePointAt(0), 0);
           }
         });
 
-        let last = performance.now();
-        function frame(now) {
-          const dt = now - last;
-          last = now;
-          const ansi = demo.tick(dt);
+        function frame() {
+          const ansi = wasm_demo_tick();
           if (ansi) term.write(ansi);
           requestAnimationFrame(frame);
         }
         requestAnimationFrame(frame);
+        term.focus();
       }
 
       main();

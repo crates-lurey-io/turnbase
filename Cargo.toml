@@ -8,7 +8,7 @@ members = [
     "crates/protocol",
     "crates/session",
     "crates/cli",
-    "crates/web",
+    "crates/demos",
     "examples/tic_tac_toe",
     "examples/high_card",
     "examples/coup",
