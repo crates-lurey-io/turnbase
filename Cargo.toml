@@ -16,6 +16,7 @@ members = [
     "examples/risk",
     "examples/blackjack",
     "examples/hanabi",
+    "examples/woodland",
 ]
 
 [workspace.package]
