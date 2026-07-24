@@ -576,6 +576,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "turnbase-protocol"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "turnbase-session"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tempfile",
+ "turnbase",
+ "turnbase-protocol",
+]
+
+[[package]]
 name = "turnbase-simulator"
 version = "0.1.0"
 dependencies = [
