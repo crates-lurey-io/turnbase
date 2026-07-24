@@ -8,7 +8,12 @@ members = [
     "crates/protocol",
     "crates/session",
     "crates/cli",
-    "examples",
+    "examples/tic_tac_toe",
+    "examples/high_card",
+    "examples/coup",
+    "examples/rock_paper_scissors",
+    "examples/minion_battle",
+    "examples/risk",
 ]
 
 [workspace.package]

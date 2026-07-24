@@ -1,6 +1,6 @@
 [package]
-name = "examples"
-description = "Reference games implemented against the Turnbase engine"
+name = "tic_tac_toe"
+description = "Tic-tac-toe reference game for the Turnbase engine"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -11,7 +11,4 @@ publish = false
 workspace = true
 
 [dependencies]
-turnbase = { path = "../crates/core" }
-
-[dev-dependencies]
-proptest = "1"
+turnbase = { path = "../../crates/core" }

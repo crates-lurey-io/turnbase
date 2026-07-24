@@ -307,8 +307,8 @@ where
 mod tests {
     use super::Ismcts;
     use crate::{Bot, RandomBot};
-    use examples::coup::CoupState;
-    use examples::{Coup, Move, TicTacToe};
+    use coup::{Coup, CoupState};
+    use tic_tac_toe::{Move, TicTacToe};
     use turnbase::{Game, PlayerId};
 
     const P0: PlayerId = PlayerId::new(0);

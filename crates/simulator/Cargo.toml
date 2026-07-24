@@ -16,7 +16,3 @@ turnbase = { path = "../core" }
 turnbase-match = { path = "../match" }
 retroglyph-core = { version = "0.2" }
 retroglyph-crossterm = { version = "0.1" }
-
-[dev-dependencies]
-examples = { path = "../../examples" }
-turnbase-bots = { path = "../bots" }
