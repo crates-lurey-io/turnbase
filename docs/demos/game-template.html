@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0d1117" />
+    <title>turnbase &mdash; __TITLE__</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@6.0.0/css/xterm.css" />
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body {
+        background: #0d1117;
+        color: #e6edf3;
+        height: 100%;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+          sans-serif;
+      }
+      body {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 1rem;
+        min-height: 100%;
+      }
+      h1 {
+        font-size: 1.25rem;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+      #screen {
+        width: 100%;
+        max-width: 62rem;
+        background: #000;
+        border: 1px solid #30363d;
+        border-radius: 6px;
+        overflow: hidden;
+        padding: 0.4rem;
+      }
+      #screen .terminal { height: 100%; }
+      p.hint { color: #8b949e; font-size: 0.8rem; text-align: center; max-width: 40rem; }
+      a { color: #58a6ff; text-decoration: none; font-size: 0.85rem; }
+    </style>
+  </head>
+  <body>
+    <h1>__TITLE__</h1>
+    <div id="screen"></div>
+    <p class="hint">
+      AI self-play: bots take every seat, and the match restarts with a new seed when it ends.
+      Rendered as real ANSI/SGR escapes via
+      <a href="https://xtermjs.org/">xterm.js</a> &mdash; the same
+      <code>PrintableGame</code>/App code the native <code>crossterm</code> client runs, compiled
+      to WebAssembly.
+    </p>
+    <a href="../">&larr; All demos</a>
+
+    <script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@6.0.0/lib/xterm.js"></script>
+    <script type="module">
+      import init, { Demo } from "../pkg/turnbase_web.js";
+
+      const GAME = "__GAME__";
+      const COLS = 96;
+      const ROWS = 32;
+
+      // Mirrors retroglyph_terminal_wasm::decode_key_event: named keys use
+      // codepoints above the valid char range; printable characters pass
+      // through as their codepoint. Demos are AI self-play, so input is
+      // optional, but arrows/Enter are wired up anyway.
+      const BASE = 0x0011_0000;
+      const NAMED = {
+        "\r": BASE + 1,
+        "\x7f": BASE,
+        "\x1b": BASE + 14,
+        "\t": BASE + 10,
+        "\x1b[A": BASE + 4,
+        "\x1b[B": BASE + 5,
+        "\x1b[C": BASE + 3,
+        "\x1b[D": BASE + 2,
+      };
+
+      async function main() {
+        await init();
+        const term = new Terminal({
+          cols: COLS,
+          rows: ROWS,
+          fontSize: 13,
+          theme: { background: "#000000" },
+          convertEol: false,
+        });
+        term.open(document.getElementById("screen"));
+
+        const seed = (Math.random() * 0xffffffff) >>> 0;
+        const demo = new Demo(GAME, COLS, ROWS, seed);
+
+        term.onData((data) => {
+          if (data in NAMED) {
+            demo.key(NAMED[data], 0);
+          } else if (data.length === 1) {
+            demo.key(data.codePointAt(0), 0);
+          }
+        });
+
+        let last = performance.now();
+        function frame(now) {
+          const dt = now - last;
+          last = now;
+          const ansi = demo.tick(dt);
+          if (ansi) term.write(ansi);
+          requestAnimationFrame(frame);
+        }
+        requestAnimationFrame(frame);
+      }
+
+      main();
+    </script>
+  </body>
+</html>

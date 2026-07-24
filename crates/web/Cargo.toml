@@ -1,0 +1,36 @@
+[package]
+name = "turnbase-web"
+description = "WASM browser demos of the Turnbase reference games"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+turnbase = { path = "../core" }
+turnbase-match = { path = "../match" }
+turnbase-bots = { path = "../bots" }
+# No crossterm: the demos render through a browser terminal backend, so the
+# dashboard stack must build for wasm32 (see turnbase-simulator's `crossterm`
+# feature).
+turnbase-simulator = { path = "../simulator", default-features = false }
+retroglyph-core = { version = "0.2" }
+retroglyph-terminal-wasm = { version = "0.1" }
+# Pinned to match retroglyph-terminal-wasm's own wasm-bindgen so the generated
+# JS glue is compatible; the CLI installed in CI must match this version too.
+wasm-bindgen = "=0.2.106"
+
+# The reference games, each with only its backend-generic rendering feature
+# (no CLI, no crossterm), so they compile for wasm32.
+coup = { path = "../../examples/coup", default-features = false, features = ["printable"] }
+risk = { path = "../../examples/risk", default-features = false, features = ["printable"] }
+minion_battle = { path = "../../examples/minion_battle", default-features = false, features = ["printable"] }
+woodland = { path = "../../examples/woodland", default-features = false, features = ["printable"] }
+blackjack = { path = "../../examples/blackjack", default-features = false, features = ["app"] }

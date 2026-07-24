@@ -20,7 +20,7 @@
 use serde::{Deserialize, Serialize};
 use turnbase::{ActivePlayers, Game, Pile, PlayerId, Prng};
 
-#[cfg(feature = "ui")]
+#[cfg(feature = "printable")]
 mod ui;
 
 /// A character card. The deck holds three of each.

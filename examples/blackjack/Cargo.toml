@@ -14,17 +14,13 @@ workspace = true
 default = ["ui"]
 cli = ["dep:turnbase-cli"]
 # Unlike the other Tier-1 examples, Blackjack ships its OWN terminal UI
-# (see `src/tui.rs`) built directly on retroglyph, rather than implementing
-# `PrintableGame` and deferring to the shared `turnbase-simulator` dashboard.
-# So `ui` pulls in retroglyph + crossterm and drives a `turnbase-match`
-# Simulator itself, and does not enable `turnbase-cli/tui`.
-ui = [
-    "cli",
-    "dep:retroglyph-core",
-    "dep:retroglyph-crossterm",
-    "dep:turnbase-match",
-    "dep:turnbase-bots",
-]
+# (`BlackjackTui` in `src/tui.rs`) built directly on retroglyph, rather than
+# implementing `PrintableGame` and deferring to the shared `turnbase-simulator`
+# dashboard. `app` is the backend-generic App (no terminal backend), so it is
+# wasm-safe and the web demo can drive it with a browser backend.
+app = ["dep:retroglyph-core", "dep:turnbase-match", "dep:turnbase-bots"]
+# The native crossterm `play` entry point on top of the App.
+ui = ["cli", "app", "dep:retroglyph-crossterm"]
 
 [dependencies]
 turnbase = { path = "../../crates/core", features = ["serde"] }

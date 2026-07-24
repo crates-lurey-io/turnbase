@@ -334,6 +334,7 @@ where
 ///
 /// # Errors
 /// Returns an `std::io::Error` if the terminal backend fails to initialize.
+#[cfg(feature = "crossterm")]
 pub fn run<G>(simulator: Simulator<G>, ai_tick: Duration) -> std::io::Result<()>
 where
     G: PrintableGame,

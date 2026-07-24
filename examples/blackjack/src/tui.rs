@@ -8,20 +8,30 @@
 //! [`turnbase_cli::run_with_play`], so the headless `new`/`query`/`act` and
 //! `self-play` commands stay shared while only `play` is custom.
 
-use std::collections::HashMap;
-use std::process::ExitCode;
 use std::time::Duration;
 
 use retroglyph_core::event::{Event, KeyCode};
 use retroglyph_core::{AnsiColor, App, Backend, Color, Flow, Frame, Terminal};
 use turnbase::Game;
-use turnbase_bots::RandomBot;
-use turnbase_cli::PlayArgs;
-use turnbase_match::{PlayerAgent, Simulator};
+use turnbase_match::Simulator;
 
-use crate::{
-    Action, Blackjack, BlackjackView, Card, DEALER, Outcome, PLAYER, Phase, best_total, is_soft,
-};
+use crate::{Action, Blackjack, BlackjackView, Card, Outcome, PLAYER, Phase, best_total, is_soft};
+
+// The crossterm `play` entry point and its helpers only exist in the native
+// `ui` build; the App itself (`BlackjackTui`) is backend-generic and also
+// powers the wasm demo via the `app` feature.
+#[cfg(feature = "ui")]
+use crate::DEALER;
+#[cfg(feature = "ui")]
+use std::collections::HashMap;
+#[cfg(feature = "ui")]
+use std::process::ExitCode;
+#[cfg(feature = "ui")]
+use turnbase_bots::RandomBot;
+#[cfg(feature = "ui")]
+use turnbase_cli::PlayArgs;
+#[cfg(feature = "ui")]
+use turnbase_match::PlayerAgent;
 
 /// How long a non-human step (a chance deal or the scripted dealer) waits, so
 /// cards land one at a time instead of appearing all at once.
@@ -30,6 +40,7 @@ const TICK: Duration = Duration::from_millis(600);
 /// The `play` handler for [`turnbase_cli::run_with_play`]: seat 0 is you, seat
 /// 1 the scripted dealer, chance deals the shoe, and the whole match renders
 /// through the bespoke `BlackjackTui`.
+#[cfg(feature = "ui")]
 #[must_use]
 pub fn play(game: Blackjack, args: &PlayArgs) -> ExitCode {
     let seed = args.seed().unwrap_or_else(random_seed);
@@ -53,17 +64,29 @@ pub fn play(game: Blackjack, args: &PlayArgs) -> ExitCode {
 
 /// The bespoke dashboard: a [`Simulator`] plus a clock that paces non-human
 /// steps so the table animates.
-struct BlackjackTui {
+///
+/// Public and backend-generic so the wasm demo can build one over a browser
+/// terminal backend, not just the native crossterm `play`.
+pub struct BlackjackTui {
     sim: Simulator<Blackjack>,
     elapsed: Duration,
 }
 
 impl BlackjackTui {
-    const fn new(sim: Simulator<Blackjack>) -> Self {
+    /// Wraps a ready-to-play [`Simulator`] (seat 0 the player, seat 1 the
+    /// dealer) in the dashboard.
+    #[must_use]
+    pub const fn new(sim: Simulator<Blackjack>) -> Self {
         Self {
             sim,
             elapsed: Duration::ZERO,
         }
+    }
+
+    /// Whether the wrapped match has ended.
+    #[must_use]
+    pub fn is_terminal(&self) -> bool {
+        self.sim.is_terminal()
     }
 
     /// Applies the player's Hit/Stand key, ignoring anything illegal.
@@ -258,6 +281,7 @@ fn match_result(view: &BlackjackView) -> &'static str {
 }
 
 /// A process-random seed, matching the CLI's unseeded behavior.
+#[cfg(feature = "ui")]
 fn random_seed() -> u64 {
     use std::hash::{BuildHasher, Hasher};
     std::collections::hash_map::RandomState::new()

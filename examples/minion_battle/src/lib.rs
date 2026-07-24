@@ -11,7 +11,7 @@
 use serde::{Deserialize, Serialize};
 use turnbase::{ActivePlayers, EffectSystem, Game, PlayerId, resolve_effects};
 
-#[cfg(feature = "ui")]
+#[cfg(feature = "printable")]
 mod ui;
 
 /// A draw is declared after this many turns so games always terminate.

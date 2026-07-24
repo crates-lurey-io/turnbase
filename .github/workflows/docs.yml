@@ -18,11 +18,13 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
+          targets: wasm32-unknown-unknown
           components: llvm-tools-preview
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@v2
         with:
-          tool: just,cargo-llvm-cov
+          # wasm-bindgen-cli must match crates/web/Cargo.toml's wasm-bindgen.
+          tool: just,cargo-llvm-cov,wasm-bindgen-cli@0.2.106
       - uses: actions/configure-pages@v5
         id: pages
 

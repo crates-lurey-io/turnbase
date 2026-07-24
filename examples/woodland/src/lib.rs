@@ -36,7 +36,7 @@
 use serde::{Deserialize, Serialize};
 use turnbase::{ActivePlayers, Game, PlayerId, Prng};
 
-#[cfg(feature = "ui")]
+#[cfg(feature = "printable")]
 mod ui;
 
 /// Number of clearings on the map.
