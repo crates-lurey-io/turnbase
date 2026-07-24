@@ -253,6 +253,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "hanabi"
+version = "0.1.0"
+dependencies = [
+ "retroglyph-core",
+ "serde",
+ "turnbase",
+ "turnbase-bots",
+ "turnbase-cli",
+ "turnbase-simulator",
+]
+
+[[package]]
 name = "heck"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
