@@ -17,10 +17,14 @@
 //! challenged by anyone but the blocker. Challenge priority is sequentialized
 //! into turn order (see `.matan/coup-plan.md`).
 
+use serde::{Deserialize, Serialize};
 use turnbase::{ActivePlayers, Game, Pile, PlayerId, Prng};
 
+#[cfg(feature = "ui")]
+mod ui;
+
 /// A character card. The deck holds three of each.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum Character {
     /// Tax; blocks Foreign Aid.
     Duke,
@@ -44,7 +48,7 @@ const CHARACTERS: [Character; 5] = [
 
 /// A move. The legal set is phase-dependent. Targeted actions name their target
 /// seat.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum Action {
     /// +1 coin. Uncontested.
     Income,
@@ -75,7 +79,7 @@ pub enum Action {
 }
 
 /// The action being resolved and the seats that still owe a response.
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 struct Pending {
     action: Action,
     actor: u8,
@@ -84,13 +88,13 @@ struct Pending {
 }
 
 /// What to run once a `Lose` is chosen.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 enum Resume {
     EndTurn,
     ApplyThenEnd { action: Action, actor: u8 },
 }
 
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 enum Phase {
     ChooseAction,
     Respond {
@@ -116,7 +120,7 @@ enum Phase {
 }
 
 /// A Coup position for 2-4 seats.
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct CoupState {
     coins: Vec<u8>,
     hands: Vec<Vec<Character>>,
@@ -183,7 +187,7 @@ impl CoupState {
 }
 
 /// What `viewer` observes: the public fields plus their own hand.
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct CoupView {
     /// Coins held by each seat.
     pub coins: Vec<u8>,
@@ -212,7 +216,7 @@ pub struct CoupView {
 /// Every variant names the seat currently owed a decision, so a consumer
 /// does not need to separately call [`Game::active_players`] to know who
 /// that is and cross-reference it against the pending context.
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum PendingView {
     /// `actor` is choosing their turn's action.
     ChooseAction {
@@ -269,7 +273,7 @@ pub enum PendingView {
 }
 
 /// The rules of Coup for a chosen number of seats.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct Coup {
     seats: u8,
 }

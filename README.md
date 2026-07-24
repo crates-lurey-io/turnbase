@@ -19,7 +19,16 @@ it.
 | --- | --- |
 | [`crates/core`](./crates/core) | The `Game` trait and supporting types (`State`, `Prng`, `Pile`, effects). Published as `turnbase`. |
 | [`crates/bots`](./crates/bots) | Search and policy bots: `RandomBot`, `Minimax`, `Mcts`, `Ismcts`. Published as `turnbase-bots`. |
-| [`examples`](./examples) | Reference games implemented against the engine: tic-tac-toe, rock-paper-scissors, high-card, Coup, minion battle, Risk. |
+| [`crates/match`](./crates/match) | The turn loop: `Simulator` and `PlayerAgent`, with no UI or I/O. Published as `turnbase-match`. |
+| [`crates/simulator`](./crates/simulator) | Interactive retroglyph terminal client over a `turnbase-match` loop. Published as `turnbase-simulator`. |
+| [`crates/protocol`](./crates/protocol) | Typed request/response wire types. Published as `turnbase-protocol`. |
+| [`crates/session`](./crates/session) | The `Session` port: in-memory and file-backed hosts. Published as `turnbase-session`. |
+| [`crates/cli`](./crates/cli) | Generic command-line runner (`run`, `run_tui`). Published as `turnbase-cli`. |
+| [`examples/`](./examples) | Standalone reference games, each its own crate: tic-tac-toe, coup, high-card, rock-paper-scissors, minion-battle, risk. |
+
+The layer above the core (sessions, hosts, headless/interactive/networked
+clients) is described in
+[`docs/design/sessions-and-transports.md`](./docs/design/sessions-and-transports.md).
 
 ## Quick start
 
@@ -44,8 +53,32 @@ impl Game for TicTacToe {
 ```
 
 Then drive it with any bot from `turnbase-bots`, or step through it by hand.
-See [`examples/src/tic_tac_toe.rs`](./examples/src/tic_tac_toe.rs) for a
+See [`examples/tic_tac_toe/src/lib.rs`](./examples/tic_tac_toe/src/lib.rs) for a
 complete reference implementation.
+
+## Playing the reference games
+
+Each reference game is a standalone crate with a one-line `main` over
+`turnbase-cli`, so it gets headless play, bot self-play, and interactive play
+with no extra code:
+
+```bash
+# Watch two bots play tic-tac-toe:
+cargo run -p tic_tac_toe -- self-play
+
+# Play Coup yourself (seat 0) against three bots, in a terminal dashboard:
+cargo run -p coup -- play
+
+# Drive a game headlessly, one action per process (agent- or script-friendly):
+cargo run -p tic_tac_toe -- new --session game.json
+cargo run -p tic_tac_toe -- act --session game.json --player 0 --action 4
+cargo run -p tic_tac_toe -- query --session game.json --player 1
+```
+
+Tic-tac-toe is "Tier 0": a `Game` impl plus serde derives, no rendering code,
+and its binary links no terminal UI. Coup is "Tier 1": it adds a `PrintableGame`
+impl to upgrade `play` to the retroglyph dashboard. Everything else is identical
+between them.
 
 ## Contributing
 

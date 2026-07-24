@@ -10,5 +10,24 @@ publish = false
 [lints]
 workspace = true
 
+[features]
+# The retroglyph dashboard (PrintableGame) plus the runnable CLI binary
+# (Tier 1). On by default so `cargo run -p coup` opens the UI; a rules-only
+# consumer (a bot's tests) depends with `default-features = false` and links
+# neither the terminal UI nor the CLI.
+default = ["ui"]
+ui = ["dep:turnbase-simulator", "dep:retroglyph-core", "dep:turnbase-cli"]
+
 [dependencies]
-turnbase = { path = "../../crates/core" }
+turnbase = { path = "../../crates/core", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
+turnbase-simulator = { path = "../../crates/simulator", optional = true }
+retroglyph-core = { version = "0.2", optional = true }
+turnbase-cli = { path = "../../crates/cli", optional = true }
+
+[dev-dependencies]
+turnbase-bots = { path = "../../crates/bots" }
+
+[[bin]]
+name = "coup"
+required-features = ["ui"]

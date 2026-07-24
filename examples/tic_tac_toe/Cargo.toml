@@ -10,5 +10,18 @@ publish = false
 [lints]
 workspace = true
 
+[features]
+# The runnable CLI binary. On by default so `cargo run -p tic_tac_toe` works;
+# a rules-only consumer (e.g. a bot's tests) depends with
+# `default-features = false` and never pulls the CLI. Tier 0: no terminal UI.
+default = ["cli"]
+cli = ["dep:turnbase-cli"]
+
 [dependencies]
 turnbase = { path = "../../crates/core" }
+serde = { version = "1", features = ["derive"] }
+turnbase-cli = { path = "../../crates/cli", default-features = false, optional = true }
+
+[[bin]]
+name = "tic_tac_toe"
+required-features = ["cli"]

@@ -13,7 +13,7 @@ workspace = true
 turnbase = { path = "../core" }
 
 [dev-dependencies]
-tic_tac_toe = { path = "../../examples/tic_tac_toe" }
+tic_tac_toe = { path = "../../examples/tic_tac_toe", default-features = false }
 high_card = { path = "../../examples/high_card" }
-coup = { path = "../../examples/coup" }
+coup = { path = "../../examples/coup", default-features = false }
 proptest = "1"

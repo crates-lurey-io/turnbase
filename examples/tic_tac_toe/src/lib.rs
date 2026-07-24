@@ -6,10 +6,11 @@
 
 use std::fmt;
 
+use serde::{Deserialize, Serialize};
 use turnbase::{ActivePlayers, Determinize, Game, PlayerId, Prng, Reversible};
 
 /// One square of the board.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
 pub enum Cell {
     /// Unclaimed square.
     #[default]
@@ -21,18 +22,18 @@ pub enum Cell {
 }
 
 /// Placing the moving player's mark on cell `0..9` (row-major).
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct Move(pub u8);
 
 /// A board position: the nine cells plus how many marks have been placed.
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct Board {
     cells: [Cell; 9],
     marks: u8,
 }
 
 /// The rules of tic-tac-toe. Carries no configuration.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
 pub struct TicTacToe;
 
 const LINES: [[usize; 3]; 8] = [
