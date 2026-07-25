@@ -557,9 +557,9 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
 name = "retroglyph-core"
-version = "0.3.0"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2cb4b0aa268d8eb0e817d19f7558c9df21434cc2020a799b0cc100928ac8aa5f"
+checksum = "299e4701e694637284c72d4567a337167cc7ca116b3c7fcc051c783b91d03df2"
 dependencies = [
  "alpha-blend",
  "bitflags",
@@ -605,9 +605,9 @@ dependencies = [
 
 [[package]]
 name = "retroglyph-widgets"
-version = "0.3.0"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6c6ed29c0e1015f30d15b1575e939e5a6f796378b5b30935785829740a1f71fc"
+checksum = "13a1f693e6784e76988e1d1d79f0bea197cab3f4ac684a2d3d16551ac1df5047"
 dependencies = [
  "retroglyph-core",
  "unicode-width",
