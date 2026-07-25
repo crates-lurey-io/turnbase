@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#0d1117" />
     <title>turnbase &mdash; __TITLE__</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@6.0.0/css/xterm.css" />
@@ -12,87 +12,245 @@
         background: #0d1117;
         color: #e6edf3;
         height: 100%;
+        overflow: hidden;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
           sans-serif;
       }
       body {
         display: flex;
         flex-direction: column;
-        align-items: center;
-        gap: 0.75rem;
-        padding: 1rem;
-        min-height: 100%;
+        gap: 0.5rem;
+        /* Dynamic viewport units: mobile browsers shrink the visible area when
+           their toolbars slide in, and 100vh would leave the terminal (and the
+           key bar under it) cropped off the bottom the whole time. */
+        height: 100dvh;
+        padding: 0.75rem max(0.75rem, env(safe-area-inset-left))
+          max(0.75rem, env(safe-area-inset-bottom));
+      }
+      header {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 1rem;
+        flex: 0 0 auto;
       }
       h1 {
-        font-size: 1.25rem;
+        font-size: 1.1rem;
         font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       }
+      a { color: #58a6ff; text-decoration: none; font-size: 0.85rem; white-space: nowrap; }
+
+      /* The terminal takes every row left over. min-height: 0 is what lets a
+         flex child actually shrink below its content size, which is what the
+         fitter measures against. */
       #screen {
-        width: 100%;
-        max-width: 62rem;
-        background: #000;
+        flex: 1 1 auto;
+        min-height: 0;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        overflow: hidden;
+        padding: 0.35rem;
+        /* The demo handles its own pointer gestures (drag the log's scrollbar,
+           swipe it to scroll); leaving the browser's own pan/zoom on would
+           fight every one of them. */
+        touch-action: none;
+      }
+      /* The frame goes on the terminal, which is sized to the cell grid, rather
+         than on the box it is measured against: a grid capped below what the
+         box could hold (see ROWS_PER_COL) would otherwise sit in a large empty
+         panel. An outline rather than a border because it takes no layout
+         space, so it cannot shave a column off the fit. */
+      #screen .xterm {
+        outline: 1px solid #30363d;
+        border-radius: 6px;
+      }
+
+      /* On-screen keys, for touch devices with no keyboard. Always rendered:
+         they double as a legend for the shortcuts on desktop. */
+      .keys {
+        flex: 0 0 auto;
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 0.35rem;
+      }
+      .keys button {
+        min-width: 2.25rem;
+        padding: 0.45rem 0.6rem;
         border: 1px solid #30363d;
         border-radius: 6px;
-        overflow: hidden;
-        padding: 0.4rem;
+        background: #161b22;
+        color: #e6edf3;
+        font: inherit;
+        font-size: 0.8rem;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        cursor: pointer;
+        touch-action: manipulation;
       }
-      #screen .terminal { height: 100%; }
-      p.hint { color: #8b949e; font-size: 0.8rem; text-align: center; max-width: 42rem; }
-      a { color: #58a6ff; text-decoration: none; font-size: 0.85rem; }
+      .keys button:active { background: #30363d; }
+
+      footer { flex: 0 0 auto; color: #8b949e; font-size: 0.75rem; text-align: center; }
+      /* Nothing here is load-bearing, and a short screen needs every row for
+         the terminal itself. */
+      @media (max-height: 34rem) {
+        footer { display: none; }
+      }
     </style>
   </head>
   <body>
-    <h1>__TITLE__</h1>
+    <header>
+      <h1>__TITLE__</h1>
+      <a href="../">← All demos</a>
+    </header>
+
     <div id="screen"></div>
-    <p class="hint">
-      AI self-play: bots take every seat, and the match restarts with a new seed when it ends.
-      Focus the terminal and use the arrow keys / Enter / Esc / letters to interact. Rendered as
-      real ANSI/SGR escapes via <a href="https://xtermjs.org/">xterm.js</a> &mdash; the same App
-      the native <code>crossterm</code> client runs, compiled to WebAssembly.
-    </p>
-    <a href="../">← All demos</a>
+
+    <div class="keys" id="keys"></div>
+
+    <footer>
+      AI self-play: bots take every seat, and the match restarts with a new seed when it ends. Use a
+      keyboard or the keys above; on the dashboard games you can also click an action to pick it and
+      scroll or drag the log to read back through it. Rendered as real ANSI/SGR escapes via
+      <a href="https://xtermjs.org/">xterm.js</a> &mdash; the same App the native
+      <code>crossterm</code> client runs, compiled to WebAssembly.
+    </footer>
 
     <script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@6.0.0/lib/xterm.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.11.0/lib/addon-fit.js"></script>
     <script type="module">
       import init, {
         wasm_demo_init,
         wasm_demo_tick,
         wasm_demo_key,
+        wasm_demo_mouse,
         wasm_demo_resize,
       } from "./__GAME__.js";
 
-      const COLS = 96;
-      const ROWS = 32;
+      // The dashboard lays out in fixed proportions (viewport 70% / stats +
+      // actions 30%, log strip along the bottom), so it needs a floor to stay
+      // legible rather than a free-form fit: the font shrinks to make this many
+      // cells fit before the grid is allowed to get any smaller than this.
+      const MIN_COLS = 80;
+      const MIN_ROWS = 26;
+      const MAX_FONT = 14;
+      const MIN_FONT = 7;
 
       // Mirrors retroglyph_terminal_wasm::decode_key_event: named keys use
       // codepoints above the valid char range; printable characters pass
       // through as their codepoint.
       const BASE = 0x0011_0000;
-      const NAMED = {
-        "\r": BASE + 1,
-        "\x7f": BASE,
-        "\x1b": BASE + 14,
-        "\t": BASE + 10,
-        "\x1b[A": BASE + 4,
-        "\x1b[B": BASE + 5,
-        "\x1b[C": BASE + 3,
-        "\x1b[D": BASE + 2,
+      const KEY = {
+        BACKSPACE: BASE,
+        ENTER: BASE + 1,
+        LEFT: BASE + 2,
+        RIGHT: BASE + 3,
+        UP: BASE + 4,
+        DOWN: BASE + 5,
+        HOME: BASE + 6,
+        END: BASE + 7,
+        PAGE_UP: BASE + 8,
+        PAGE_DOWN: BASE + 9,
+        TAB: BASE + 10,
+        ESCAPE: BASE + 14,
       };
+
+      // The escape sequences xterm.js hands back through onData, mapped to the
+      // same named-key codes.
+      const NAMED = {
+        "\r": KEY.ENTER,
+        "\x7f": KEY.BACKSPACE,
+        "\x1b": KEY.ESCAPE,
+        "\t": KEY.TAB,
+        "\x1b[A": KEY.UP,
+        "\x1b[B": KEY.DOWN,
+        "\x1b[C": KEY.RIGHT,
+        "\x1b[D": KEY.LEFT,
+        "\x1b[H": KEY.HOME,
+        "\x1b[F": KEY.END,
+        "\x1bOH": KEY.HOME,
+        "\x1bOF": KEY.END,
+        "\x1b[5~": KEY.PAGE_UP,
+        "\x1b[6~": KEY.PAGE_DOWN,
+      };
+
+      // Mirrors retroglyph_terminal_wasm::mouse_actions.
+      const MOUSE = { DOWN: 0, UP: 1, MOVED: 2, SCROLL_UP: 3, SCROLL_DOWN: 4 };
+
+      // The on-screen key bar, enough to drive the demo without a keyboard.
+      // Substituted per game by tools/build-wasm-demos.sh as [label, key]
+      // pairs, where key is either a KEY constant's name or a literal
+      // character: the dashboard games and blackjack's own App answer to
+      // different keys.
+      const BUTTONS = __KEYS__;
+
+      // Picks the largest font size that still fits MIN_COLS x MIN_ROWS cells
+      // in the container, and returns the grid that font yields. Below MIN_FONT
+      // there is nothing left to give, so a viewport too narrow even then
+      // simply gets the smaller grid (the dashboard clips rather than breaking).
+      function bestFit(term, fitAddon) {
+        let fallback = null;
+        for (let size = MAX_FONT; size >= MIN_FONT; size--) {
+          term.options.fontSize = size;
+          const dims = fitAddon.proposeDimensions();
+          if (!dims || !dims.cols || !dims.rows) continue;
+          fallback = dims;
+          if (dims.cols >= MIN_COLS && dims.rows >= MIN_ROWS) return dims;
+        }
+        return fallback;
+      }
 
       async function main() {
         await init();
+
         const term = new Terminal({
-          cols: COLS,
-          rows: ROWS,
-          fontSize: 13,
+          fontSize: MAX_FONT,
+          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, "Courier New", monospace',
           theme: { background: "#000000" },
           convertEol: false,
+          // The App owns every row on screen; xterm's own scrollback (and the
+          // scrollbar and wheel handling that come with it) would only compete
+          // with the dashboard's log strip for the same gestures.
+          scrollback: 0,
+          cursorBlink: false,
         });
-        term.open(document.getElementById("screen"));
+        const fitAddon = new FitAddon.FitAddon();
+        term.loadAddon(fitAddon);
 
+        const screen = document.getElementById("screen");
+        term.open(screen);
+
+        let cols = 0;
+        let rows = 0;
+
+        // The grid fills the box rather than being capped to some nominal
+        // size: the whole point is that the demo shows the dashboard at the
+        // window it was given, exactly as the CLI does in a terminal that size.
+        function applyFit() {
+          const dims = bestFit(term, fitAddon);
+          if (!dims || (dims.cols === cols && dims.rows === rows)) return false;
+          cols = dims.cols;
+          rows = dims.rows;
+          term.resize(cols, rows);
+          // The App repaints every cell it draws after a resize, but a cell it
+          // leaves blank emits nothing at all -- so whatever the old, differently
+          // shaped frame left in the emulator at that spot would stay on screen.
+          term.reset();
+          return true;
+        }
+
+        applyFit();
         const seed = (Math.random() * 0xffffffff) >>> 0;
-        wasm_demo_init(COLS, ROWS, seed);
-        wasm_demo_resize(COLS, ROWS);
+        wasm_demo_init(cols, rows, seed);
+        wasm_demo_resize(cols, rows);
+
+        // A ResizeObserver rather than window.onresize: the terminal follows
+        // its own box, which also changes when the key bar wraps to a second
+        // line or a mobile browser's toolbar slides away.
+        const observer = new ResizeObserver(() => {
+          if (applyFit()) wasm_demo_resize(cols, rows);
+        });
+        observer.observe(screen);
 
         term.onData((data) => {
           if (data in NAMED) {
@@ -101,6 +259,115 @@
             wasm_demo_key(data.codePointAt(0), 0);
           }
         });
+
+        // --- Pointer input -------------------------------------------------
+        // The App thinks in cells, so every gesture is converted against the
+        // rendered screen's box before it crosses the FFI. xterm.js only
+        // reports mouse events to the application when the application asks
+        // for them with a DECSET sequence, which retroglyph never sends, so
+        // these come straight off the DOM instead.
+
+        function cellAt(clientX, clientY) {
+          const target = term.element.querySelector(".xterm-screen") ?? term.element;
+          const box = target.getBoundingClientRect();
+          const x = Math.floor(((clientX - box.left) / box.width) * cols);
+          const y = Math.floor(((clientY - box.top) / box.height) * rows);
+          return [
+            Math.min(Math.max(x, 0), Math.max(cols - 1, 0)),
+            Math.min(Math.max(y, 0), Math.max(rows - 1, 0)),
+          ];
+        }
+
+        function sendMouse(clientX, clientY, action, button = 0) {
+          const [x, y] = cellAt(clientX, clientY);
+          wasm_demo_mouse(x, y, action, button, 0);
+        }
+
+        // Motion is only forwarded while a button is held, the way a terminal
+        // reports it without "any motion" tracking on: a hover has nothing to
+        // say to the App, and mousemove fires often enough that queueing every
+        // one of them would be pure overhead.
+        let pressed = false;
+
+        screen.addEventListener("mousedown", (event) => {
+          pressed = true;
+          sendMouse(event.clientX, event.clientY, MOUSE.DOWN, event.button);
+        });
+        // Move and release listen on the window: a scrollbar drag that slides
+        // off the terminal must keep tracking, and the release that ends it
+        // often lands outside.
+        window.addEventListener("mousemove", (event) => {
+          if (pressed) sendMouse(event.clientX, event.clientY, MOUSE.MOVED, 0);
+        });
+        window.addEventListener("mouseup", (event) => {
+          pressed = false;
+          sendMouse(event.clientX, event.clientY, MOUSE.UP, event.button);
+        });
+
+        screen.addEventListener(
+          "wheel",
+          (event) => {
+            if (event.deltaY === 0) return;
+            event.preventDefault();
+            const action = event.deltaY < 0 ? MOUSE.SCROLL_UP : MOUSE.SCROLL_DOWN;
+            sendMouse(event.clientX, event.clientY, action);
+          },
+          { passive: false },
+        );
+
+        // Touch: a short tap is a click, a vertical drag is a scroll. One
+        // wheel notch per this many pixels of travel, roughly a text row.
+        const TOUCH_STEP = 24;
+        let touch = null;
+
+        screen.addEventListener("touchstart", (event) => {
+          const point = event.changedTouches[0];
+          touch = { x: point.clientX, y: point.clientY, lastY: point.clientY, moved: false };
+        });
+
+        screen.addEventListener(
+          "touchmove",
+          (event) => {
+            if (!touch) return;
+            event.preventDefault();
+            const point = event.changedTouches[0];
+            let delta = point.clientY - touch.lastY;
+            while (Math.abs(delta) >= TOUCH_STEP) {
+              // Content follows the finger: dragging down reveals older lines.
+              const action = delta > 0 ? MOUSE.SCROLL_UP : MOUSE.SCROLL_DOWN;
+              sendMouse(touch.x, touch.y, action);
+              const step = delta > 0 ? TOUCH_STEP : -TOUCH_STEP;
+              touch.lastY += step;
+              delta -= step;
+              touch.moved = true;
+            }
+          },
+          { passive: false },
+        );
+
+        screen.addEventListener("touchend", (event) => {
+          if (!touch) return;
+          const point = event.changedTouches[0];
+          if (!touch.moved && Math.abs(point.clientY - touch.y) < TOUCH_STEP) {
+            sendMouse(point.clientX, point.clientY, MOUSE.DOWN, 0);
+            sendMouse(point.clientX, point.clientY, MOUSE.UP, 0);
+          }
+          touch = null;
+        });
+
+        // --- On-screen keys ------------------------------------------------
+        const keys = document.getElementById("keys");
+        for (const [label, key] of BUTTONS) {
+          const code = key in KEY ? KEY[key] : key.codePointAt(0);
+          const button = document.createElement("button");
+          button.textContent = label;
+          button.type = "button";
+          button.addEventListener("click", () => {
+            wasm_demo_key(code, 0);
+            term.focus();
+          });
+          keys.append(button);
+        }
 
         function frame() {
           const ansi = wasm_demo_tick();

@@ -159,6 +159,22 @@ impl<D: Demo> WasmDemo<D> {
         }
     }
 
+    /// Forwards a mouse event from the page (see `decode_mouse_event`'s
+    /// encoding) into the running App.
+    ///
+    /// `x`/`y` are cell coordinates, not pixels: the page divides by the
+    /// terminal emulator's cell size before calling this, since the App only
+    /// ever thinks in cells.
+    pub fn mouse(&mut self, x: u16, y: u16, action: u8, button: u8, mods: u8) {
+        if let Some(event) =
+            retroglyph_terminal_wasm::decode_mouse_event(x, y, action, button, mods)
+        {
+            self.term
+                .backend_mut()
+                .push_event(retroglyph_core::event::Event::Mouse(event));
+        }
+    }
+
     /// Resizes the grid to match the browser terminal.
     pub fn resize(&mut self, cols: u16, rows: u16) {
         self.term.resize(cols, rows);
@@ -168,7 +184,8 @@ impl<D: Demo> WasmDemo<D> {
 /// Emits the `wasm-bindgen` FFI for a concrete [`Demo`] type.
 ///
 /// Generates the browser entry points `wasm_demo_init(cols, rows, seed)`,
-/// `wasm_demo_tick() -> String`, `wasm_demo_key(code, mods)`, and
+/// `wasm_demo_tick() -> String`, `wasm_demo_key(code, mods)`,
+/// `wasm_demo_mouse(x, y, action, button, mods)`, and
 /// `wasm_demo_resize(cols, rows)`, backed by one thread-local [`WasmDemo`].
 ///
 /// Call once, at the top level of a game's `examples/` entry, right after
@@ -236,6 +253,18 @@ macro_rules! demo_entry {
                 DEMO.with(|cell| {
                     if let ::std::option::Option::Some(demo) = cell.borrow_mut().as_mut() {
                         demo.key(code, mods);
+                    }
+                });
+            }
+
+            /// Queues a mouse event at cell `x`, `y`. No-op before
+            /// `wasm_demo_init`.
+            #[::wasm_bindgen::prelude::wasm_bindgen]
+            #[allow(missing_docs)]
+            pub fn wasm_demo_mouse(x: u16, y: u16, action: u8, button: u8, mods: u8) {
+                DEMO.with(|cell| {
+                    if let ::std::option::Option::Some(demo) = cell.borrow_mut().as_mut() {
+                        demo.mouse(x, y, action, button, mods);
                     }
                 });
             }
