@@ -18,7 +18,7 @@ turnbase-bots = { path = "../bots" }
 # dashboard stack must build for wasm32 (see turnbase-simulator's `crossterm`
 # feature).
 turnbase-simulator = { path = "../simulator", default-features = false }
-retroglyph-core = { version = "0.2" }
+retroglyph-core = { version = "0.3" }
 retroglyph-terminal-wasm = { version = "0.1" }
 # A portable Instant: a zero-cost re-export of std::time on native, and backed
 # by the browser's Performance.now() on wasm32, so the demo clock is one type
