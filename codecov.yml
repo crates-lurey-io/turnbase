@@ -1,3 +1,8 @@
+codecov:
+  # CI failing and coverage being reported are independent questions. A red test job should not also
+  # suppress the coverage comment that might explain it.
+  require_ci_to_pass: false
+
 coverage:
   status:
     project:
@@ -6,3 +11,105 @@ coverage:
     patch:
       default:
         informational: true
+
+# One combined workspace lcov.info is uploaded, but each flag is scoped by its own `paths:`, so the
+# single upload still yields per-crate numbers instead of one blended workspace figure.
+# `carryforward` keeps a crate's last known coverage on a PR that does not touch it, rather than
+# reporting it as zero.
+flags:
+  core:
+    paths:
+      - crates/core/src/
+    carryforward: true
+  bots:
+    paths:
+      - crates/bots/src/
+    carryforward: true
+  match:
+    paths:
+      - crates/match/src/
+    carryforward: true
+  simulator:
+    paths:
+      - crates/simulator/src/
+    carryforward: true
+  protocol:
+    paths:
+      - crates/protocol/src/
+    carryforward: true
+  session:
+    paths:
+      - crates/session/src/
+    carryforward: true
+  cli:
+    paths:
+      - crates/cli/src/
+    carryforward: true
+
+# One coverage status per crate, so a PR touching only crates/session shows a `session` check rather
+# than a single blended number. Reuses the flags above via `flag_regexes` instead of redefining
+# paths, so the two cannot drift apart.
+#
+# The regexes are anchored deliberately. They are regexes, not globs, so an unanchored `core` would
+# also match nothing else here today but `match` and `session` are short enough that an unanchored
+# pattern is an accident waiting to happen as crates are added.
+#
+# Informational like the project/patch defaults above: this is visibility, not a gate.
+component_management:
+  default_rules:
+    statuses:
+      - type: project
+        informational: true
+      - type: patch
+        informational: true
+  individual_components:
+    - component_id: core
+      name: core
+      flag_regexes:
+        - ^core$
+    - component_id: bots
+      name: bots
+      flag_regexes:
+        - ^bots$
+    - component_id: match
+      name: match
+      flag_regexes:
+        - ^match$
+    - component_id: simulator
+      name: simulator
+      flag_regexes:
+        - ^simulator$
+    - component_id: protocol
+      name: protocol
+      flag_regexes:
+        - ^protocol$
+    - component_id: session
+      name: session
+      flag_regexes:
+        - ^session$
+    - component_id: cli
+      name: cli
+      flag_regexes:
+        - ^cli$
+
+# `false`, not the default `true`. With annotations on, Codecov posts every status below twice on
+# each PR -- once via the classic Statuses API (what coverage.status and component_management
+# configure) and once more via the Checks API for inline diff annotations, under identical context
+# names. The annotations are also dead weight here regardless: Codecov's own docs say they do not
+# work when Flags or Components are configured, and this file uses both. Pure downside otherwise.
+github_checks:
+  annotations: false
+
+# Non-library code that should never count toward a crate's coverage. `just coverage-gen` already
+# scopes what it measures, so these are a backstop against that drifting rather than an active
+# problem.
+ignore:
+  - 'examples/**'
+  - 'crates/demos/**'
+  - 'tools/**'
+  - '**/build.rs'
+
+comment:
+  layout: condensed_header, condensed_files, condensed_footer
+  behavior: default
+  require_changes: true

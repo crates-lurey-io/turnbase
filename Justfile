@@ -123,8 +123,15 @@ deny: deny-advisories deny-licenses
 coverage *args:
     cargo llvm-cov --workspace --open {{ args }}
 
+# cargo-llvm-cov writes absolute `SF:` paths. Codecov can usually match those against the repo's
+# file list, but relying on that heuristic means codecov.yml's per-crate `paths:` silently match
+# nothing and every flag reports 0%. Rewrite them to repo-relative so the match is literal.
+# sed -i.bak + rm is the portable form; bare `sed -i` differs between BSD and GNU.
+
+# Generate lcov.info for Codecov.
 coverage-gen:
     cargo llvm-cov --workspace --lcov --output-path lcov.info
+    sed -i.bak "s|^SF:$(pwd)/|SF:|" lcov.info && rm -f lcov.info.bak
 
 # ── Composite ────────────────────────────────────────────────────────────────
 
