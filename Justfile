@@ -62,6 +62,17 @@ machete:
 hack:
     cargo hack check --each-feature --no-dev-deps --workspace
 
+# Static analysis of the workflow files themselves. `actions` covers both:
+#   actionlint - workflow syntax, expression types, and shellcheck over `run:` blocks
+#   zizmor     - supply-chain and permission auditing (see zizmor.yml for the two exceptions)
+# zizmor resolves action refs against the GitHub API, so it wants a token; `gh auth token` is used
+# locally and CI passes GITHUB_TOKEN.
+
+# Lint the GitHub Actions workflows.
+actions:
+    actionlint
+    GH_TOKEN="${GH_TOKEN:-$(gh auth token)}" zizmor --config zizmor.yml .github/workflows/
+
 lint: clippy markdown typos machete
 
 # ── Build ────────────────────────────────────────────────────────────────────

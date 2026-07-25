@@ -37,11 +37,13 @@ jobs:
       # crates.io (Settings -> Trusted Publishing) before the first release.
       id-token: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: release-plz/action@v0.5
+      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # master
+        with:
+          toolchain: stable
+      - uses: release-plz/action@2eb1d8bcb770b4c48ccfaad919734b38b51958c9 # v0.5.131
         with:
           command: release
         env:
@@ -70,18 +72,20 @@ jobs:
       contents: write
       pull-requests: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: actions/setup-node@v6
+      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # master
+        with:
+          toolchain: stable
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version-file: .nvmrc
           cache: npm
           cache-dependency-path: tools/package-lock.json
       - name: Run release-plz
         id: release-plz
-        uses: release-plz/action@v0.5
+        uses: release-plz/action@2eb1d8bcb770b4c48ccfaad919734b38b51958c9 # v0.5.131
         with:
           command: release-pr
         env:

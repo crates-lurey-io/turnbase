@@ -1,0 +1,23 @@
+# Configuration for zizmor (https://docs.zizmor.sh), run by `just zizmor`.
+#
+# Every entry here is a deliberate exception with a reason, not a way to make the audit quiet.
+# Prefer fixing a finding over adding to this file.
+
+rules:
+  dangerous-triggers:
+    ignore:
+      # labeler.yml uses pull_request_target because labeling needs write scope, which a
+      # pull_request-triggered run does not get on fork PRs. The usual danger of this trigger is
+      # that it runs with a privileged token against attacker-controlled code -- this workflow
+      # never checks out or executes PR code at all. actions/labeler reads the changed-file list
+      # through the API, and the title-labels job reads only the PR title from the event payload.
+      # There is no build step, no `run:` executing repository content, and no checkout.
+      - labeler.yml
+
+  artipacked:
+    ignore:
+      # release-plz.yml is the one workflow here that legitimately needs the credentials
+      # actions/checkout persists. Its Release-PR job runs `gh pr checkout` followed by
+      # `git push` to land the formatting fixup commit, which authenticates through the
+      # persisted credentials. Every other workflow sets persist-credentials: false.
+      - release-plz.yml
