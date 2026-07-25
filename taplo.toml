@@ -1,0 +1,17 @@
+# Configuration for `taplo` (https://taplo.tamasfe.dev), run by `just taplo`.
+
+include = ["**/*.toml"]
+exclude = ["target/**", "tools/node_modules/**", ".matan/**", ".pi/**", ".pi-subagents/**"]
+
+[formatting]
+# Match .editorconfig, which sets indent_size = 4 for *.toml. taplo defaults to 2 and does not read
+# .editorconfig, so without this the two disagree and every Cargo.toml reformats on the first run.
+indent_string = "    "
+# Keep the existing hand-chosen ordering. Cargo manifests here group related keys deliberately
+# (name/description/version, then the inherited metadata block), and alphabetising would scatter
+# that for no gain.
+reorder_keys = false
+reorder_arrays = false
+# The workspace members list and dependency tables are already hand-wrapped at a readable width;
+# 100 matches .prettierrc's printWidth and rustfmt's max_width.
+column_width = 100
