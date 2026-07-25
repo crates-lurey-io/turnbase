@@ -21,7 +21,7 @@ use turnbase_bots::{Bot, Ismcts, Mcts, RandomBot};
 use turnbase_match::{PlayerAgent, Simulator};
 
 use crate::PrintableGame;
-use crate::dashboard::{Layout, draw_board_stats_log, print_rows};
+use crate::dashboard::{Layout, draw_board_stats_log, draw_menu, print_rows};
 
 /// Search budget for the [`Mcts`]/[`Ismcts`] bot options offered in the setup
 /// modal. Small, so a move computes within a frame and the demo stays
@@ -134,6 +134,27 @@ const fn index_kind(index: usize) -> SeatKind {
     }
 }
 
+/// Counts the human-controlled seats. Two or more means local pass-and-play,
+/// which gates each seat's reveal behind a device handoff.
+fn count_humans(seats: &[SeatKind]) -> usize {
+    seats
+        .iter()
+        .filter(|kind| matches!(kind, SeatKind::Human))
+        .count()
+}
+
+/// Chooses the dashboard's viewing seat for a freshly built match: with two or
+/// more human seats the viewer follows the acting seat (starting as a neutral
+/// spectator, gated by a handoff), otherwise it is fixed at the single human
+/// (or a spectator when every seat is AI).
+fn viewer_for<G: Game>(seats: &[SeatKind], sim: &Simulator<G>) -> Option<PlayerId> {
+    if count_humans(seats) >= 2 {
+        None
+    } else {
+        sim.primary_human()
+    }
+}
+
 /// Mixes a per-seat bot seed off the match seed, so two bot seats do not share
 /// a random stream.
 fn seat_seed(seed: u64, seat: u32) -> u64 {
@@ -169,6 +190,20 @@ fn down_keys(events: &[Event]) -> impl Iterator<Item = KeyCode> + '_ {
     })
 }
 
+/// What is currently in front of the dashboard. Mutually exclusive by
+/// construction, so only one modal-ish state can be open at a time.
+#[derive(Clone, Copy)]
+enum Overlay {
+    /// Nothing: the live match dashboard is in front.
+    None,
+    /// The seat-setup modal, carrying the cursor's seat row.
+    Setup(usize),
+    /// The controls help card.
+    Help,
+    /// A pending device handoff to the given seat, awaiting Enter to reveal.
+    Handoff(PlayerId),
+}
+
 /// An interactive session over a [`Simulator`]: the dashboard plus a setup
 /// modal, Auto/Step control, speed, reset, and a human-playable seat.
 ///
@@ -198,7 +233,10 @@ where
     sim: Simulator<G>,
     viewer: Option<PlayerId>,
     selected: usize,
-    setup: Option<usize>,
+    // The active overlay (setup modal, help card, or a pending device
+    // handoff), or None when the live dashboard is in front. One field, so the
+    // three stay mutually exclusive by construction.
+    overlay: Overlay,
     exit: bool,
 }
 
@@ -218,7 +256,7 @@ where
         }
         let seats = vec![SeatKind::Ai(0); game.num_players()];
         let sim = build_sim(&game, &seats, &bots, seed);
-        let viewer = sim.primary_human();
+        let viewer = viewer_for(&seats, &sim);
         Self {
             game,
             bots,
@@ -232,7 +270,7 @@ where
             sim,
             viewer,
             selected: 0,
-            setup: None,
+            overlay: Overlay::None,
             exit: false,
         }
     }
@@ -252,12 +290,12 @@ where
     /// configures seats before the match runs.
     #[must_use]
     pub fn with_setup_open(mut self, open: bool) -> Self {
-        if open {
+        self.overlay = if open {
             self.setup_backup = self.seats.clone();
-            self.setup = Some(0);
+            Overlay::Setup(0)
         } else {
-            self.setup = None;
-        }
+            Overlay::None
+        };
         self
     }
 
@@ -272,7 +310,7 @@ where
     /// harness can decide when to restart).
     #[must_use]
     pub fn is_terminal(&self) -> bool {
-        self.setup.is_none() && self.sim.is_terminal()
+        matches!(self.overlay, Overlay::None) && self.sim.is_terminal()
     }
 
     /// Unwraps to the underlying [`Simulator`] at its current state.
@@ -285,7 +323,12 @@ where
     /// e.g. after the setup modal is confirmed.
     fn rebuild(&mut self) {
         self.sim = build_sim(&self.game, &self.seats, &self.bots, self.seed);
-        self.viewer = self.sim.primary_human();
+        self.viewer = viewer_for(&self.seats, &self.sim);
+        // A rebuild invalidates a pending handoff, but must preserve an open
+        // setup modal (with_human_seat rebuilds while the modal is still up).
+        if matches!(self.overlay, Overlay::Handoff(_)) {
+            self.overlay = Overlay::None;
+        }
         self.selected = 0;
         self.ai_elapsed = Duration::ZERO;
         self.paused = false;
@@ -311,7 +354,7 @@ where
                 KeyCode::Escape => self.exit = true,
                 KeyCode::Char('c' | 'C') => {
                     self.setup_backup = self.seats.clone();
-                    self.setup = Some(0);
+                    self.overlay = Overlay::Setup(0);
                 }
                 KeyCode::Char('r' | 'R') => self.reset(),
                 KeyCode::Char('m' | 'M') | KeyCode::Tab => {
@@ -326,6 +369,7 @@ where
                 }
                 KeyCode::Char('+' | '=') => self.speed = (self.speed + 1).min(SPEEDS.len() - 1),
                 KeyCode::Char('-' | '_') => self.speed = self.speed.saturating_sub(1),
+                KeyCode::Char('?' | 'h' | 'H') => self.overlay = Overlay::Help,
                 KeyCode::Char(' ') => self.step_once(),
                 _ => {}
             }
@@ -380,10 +424,10 @@ where
         }
     }
 
-    fn handle_setup(&mut self, events: &[Event]) {
+    fn handle_setup(&mut self, cursor: usize, events: &[Event]) {
         let seats = self.seats.len();
         let kinds = self.bots.len() + 1;
-        let mut cursor = self.setup.unwrap_or(0).min(seats.saturating_sub(1));
+        let mut cursor = cursor.min(seats.saturating_sub(1));
         for key in down_keys(events) {
             match key {
                 KeyCode::Up if seats > 0 => {
@@ -399,43 +443,118 @@ where
                     self.seats[cursor] = index_kind(next);
                 }
                 KeyCode::Enter => {
-                    self.setup = None;
+                    self.overlay = Overlay::None;
                     self.rebuild();
                     return;
                 }
                 KeyCode::Escape => {
                     // Cancel: discard the edits made in the modal.
                     self.seats.clone_from(&self.setup_backup);
-                    self.setup = None;
+                    self.overlay = Overlay::None;
                     return;
                 }
                 _ => {}
             }
         }
-        self.setup = Some(cursor);
+        self.overlay = Overlay::Setup(cursor);
+    }
+
+    /// Whether committing `player`'s turn to the action menu would reveal one
+    /// human's private view to another. True only in 2+ human pass-and-play
+    /// when the board is not already showing `player`'s seat.
+    fn reveal_gated(&self, player: PlayerId) -> bool {
+        count_humans(&self.seats) >= 2 && self.viewer != Some(player)
+    }
+
+    /// While a handoff is pending, wait for Enter to reveal the new seat (or
+    /// Esc to quit); every other key is swallowed so nothing leaks early.
+    fn handle_handoff(&mut self, seat: PlayerId, events: &[Event]) {
+        for key in down_keys(events) {
+            match key {
+                KeyCode::Enter => {
+                    self.viewer = Some(seat);
+                    self.overlay = Overlay::None;
+                    return;
+                }
+                KeyCode::Escape => {
+                    self.exit = true;
+                    return;
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// While the help overlay is up, any of `?`/`h`/Esc closes it; the match
+    /// stays frozen until then.
+    fn handle_help(&mut self, events: &[Event]) {
+        for key in down_keys(events) {
+            if matches!(key, KeyCode::Char('?' | 'h' | 'H') | KeyCode::Escape) {
+                self.overlay = Overlay::None;
+                return;
+            }
+        }
+    }
+
+    /// The status-bar summary of whose turn it is: the human (you), the named
+    /// AI controlling the active seat, a chance node, or the finished match.
+    fn turn_label(&self) -> String {
+        if self.sim.is_terminal() {
+            return "over".to_owned();
+        }
+        if let Some(player) = self.sim.awaiting_human() {
+            return format!("P{} (you)", player.index());
+        }
+        match self
+            .sim
+            .game()
+            .active_players(self.sim.state())
+            .iter()
+            .next()
+        {
+            Some(player) if player.is_chance() => "chance".to_owned(),
+            Some(player) => {
+                let name = usize::try_from(player.index())
+                    .ok()
+                    .and_then(|seat| self.seats.get(seat))
+                    .map_or("AI", |kind| self.kind_label(*kind));
+                format!("P{} ({name})", player.index())
+            }
+            None => "over".to_owned(),
+        }
     }
 
     fn draw<B: Backend>(&self, term: &mut Terminal<B>) {
         term.reset_style();
         let layout = Layout::new(term.area());
-        let view = self.sim.game().view(self.sim.state(), self.viewer);
-        draw_board_stats_log(
-            self.sim.game(),
-            &view,
-            self.sim.log_history(),
-            term,
-            &layout,
-        );
-        self.draw_actions(term, &layout);
+        if let Overlay::Handoff(seat) = self.overlay {
+            // Cover the board so the previous seat's private view is hidden
+            // while the device changes hands.
+            Self::draw_handoff(term, seat);
+        } else {
+            let view = self.sim.game().view(self.sim.state(), self.viewer);
+            draw_board_stats_log(
+                self.sim.game(),
+                &view,
+                self.sim.log_history(),
+                term,
+                &layout,
+            );
+            self.draw_actions(term, &layout);
+        }
         self.draw_status(term, &layout);
-        if let Some(cursor) = self.setup {
-            self.draw_setup(term, cursor);
+        match self.overlay {
+            Overlay::Setup(cursor) => self.draw_setup(term, cursor),
+            Overlay::Help => Self::draw_help(term),
+            Overlay::None | Overlay::Handoff(_) => {}
         }
     }
 
     fn draw_actions<B: Backend>(&self, term: &mut Terminal<B>, layout: &Layout) {
-        term.print(layout.actions.left(), layout.actions.top(), "-- actions --");
+        let left = layout.actions.left();
+        let top = layout.actions.top();
         if self.sim.is_terminal() {
+            term.print(left, top, "-- actions --");
             print_rows(
                 term,
                 layout.actions,
@@ -445,13 +564,15 @@ where
         } else if let Some(player) = self.sim.awaiting_human() {
             let actions = self.sim.game().legal_actions(self.sim.state(), player);
             let game = self.sim.game();
-            let selected = self.selected.min(actions.len().saturating_sub(1));
-            let labels = actions.iter().enumerate().map(|(row, action)| {
-                let marker = if row == selected { '>' } else { ' ' };
-                format!("{marker} {}", game.format_action(action))
-            });
-            print_rows(term, layout.actions, 1, labels);
+            let labels: Vec<String> = actions.iter().map(|a| game.format_action(a)).collect();
+            let selected = self.selected.min(labels.len().saturating_sub(1));
+            // Position/total in the header, so a scrolled menu still tells you
+            // how many actions there are.
+            let header = format!("-- actions ({}/{}) --", selected + 1, labels.len());
+            term.print(left, top, &header);
+            draw_menu(term, layout.actions, 1, &labels, selected);
         } else {
+            term.print(left, top, "-- actions --");
             let label = if !self.auto {
                 "(step: press Space)"
             } else if self.paused {
@@ -474,16 +595,9 @@ where
         } else {
             String::new()
         };
-        let turn = if self.sim.is_terminal() {
-            "over".to_owned()
-        } else if let Some(player) = self.sim.awaiting_human() {
-            format!("P{} (you)", player.index())
-        } else {
-            "AI".to_owned()
-        };
-        let text = format!(
-            " {mode}{speed}  |  turn: {turn}  |  Space step  m mode  p pause  +/- speed  c config  r reset  Esc quit"
-        );
+        let turn = self.turn_label();
+        let text =
+            format!(" {mode}{speed}  |  turn: {turn}  |  c config  r reset  ? help  Esc quit");
 
         let width = usize::from(layout.status.width());
         let mut bar: String = text.chars().take(width).collect();
@@ -542,6 +656,51 @@ where
         );
         term.reset_style();
     }
+
+    fn draw_handoff<B: Backend>(term: &mut Terminal<B>, seat: PlayerId) {
+        let theme = Theme::DARK;
+        let inner = Modal::new(42, 6)
+            .theme(theme)
+            .title("Pass the device")
+            .render(term.area(), term);
+        term.reset_style().fg(theme.fg);
+        print_rows(
+            term,
+            inner,
+            0,
+            [
+                format!("Hand the screen to P{}.", seat.index()),
+                String::new(),
+                "Press Enter when they are ready.".to_owned(),
+            ],
+        );
+        term.reset_style();
+    }
+
+    fn draw_help<B: Backend>(term: &mut Terminal<B>) {
+        let theme = Theme::DARK;
+        let lines = [
+            "Space   step one decision",
+            "m/Tab   Auto <-> Step",
+            "p       pause / resume (Auto)",
+            "+ / -   speed",
+            "c       configure seats",
+            "r       restart (new seed)",
+            "?       toggle this help",
+            "Esc     quit",
+            "",
+            "Your turn: Up/Down select, Enter play",
+        ];
+        #[expect(clippy::cast_possible_truncation, reason = "line count is tiny")]
+        let height = lines.len() as u16 + 4;
+        let inner = Modal::new(44, height)
+            .theme(theme)
+            .title("Controls")
+            .render(term.area(), term);
+        term.reset_style().fg(theme.fg);
+        print_rows(term, inner, 0, lines.iter().map(|line| (*line).to_owned()));
+        term.reset_style();
+    }
 }
 
 impl<G, B> App<B> for SessionApp<G>
@@ -553,16 +712,26 @@ where
     fn update(&mut self, term: &mut Terminal<B>, frame: &Frame) -> Flow {
         let events: Vec<Event> = term.drain_events().collect();
 
-        if self.setup.is_some() {
-            self.handle_setup(&events);
-        } else {
-            self.handle_controls(&events);
-            if !self.exit && !self.sim.is_terminal() {
-                match self.sim.awaiting_human() {
-                    Some(player) => self.handle_action_menu(player, &events),
-                    None => {
-                        if self.auto && !self.paused {
-                            self.tick_ai(frame);
+        match self.overlay {
+            Overlay::Setup(cursor) => self.handle_setup(cursor, &events),
+            Overlay::Help => self.handle_help(&events),
+            Overlay::Handoff(seat) => self.handle_handoff(seat, &events),
+            Overlay::None => {
+                self.handle_controls(&events);
+                // handle_controls may have opened an overlay or set exit; only
+                // touch the match if the live dashboard is still in front.
+                if !self.exit && matches!(self.overlay, Overlay::None) && !self.sim.is_terminal() {
+                    match self.sim.awaiting_human() {
+                        Some(player) if self.reveal_gated(player) => {
+                            // Blank the screen and wait for the device to change
+                            // hands before revealing this seat's view.
+                            self.overlay = Overlay::Handoff(player);
+                        }
+                        Some(player) => self.handle_action_menu(player, &events),
+                        None => {
+                            if self.auto && !self.paused {
+                                self.tick_ai(frame);
+                            }
                         }
                     }
                 }
@@ -591,4 +760,155 @@ where
     G::Action: Debug,
 {
     retroglyph_crossterm::Crossterm::run(app)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use retroglyph_core::backend::Headless;
+    use retroglyph_core::event::{Event, KeyCode, KeyEvent, KeyModifiers};
+    use retroglyph_core::grid::Rect;
+    use retroglyph_core::{Backend, Flow, Frame, Terminal, step};
+    use turnbase::{ActivePlayers, Game, PlayerId};
+
+    use super::{SeatKind, SessionApp, build_sim, count_humans, standard_bots, viewer_for};
+    use crate::PrintableGame;
+
+    /// A two-seat game that takes one action per seat then ends. Enough state
+    /// to exercise seat scheduling, human turns, and rebuilds; the view is the
+    /// public move count (no hidden info needed for these tests).
+    #[derive(Clone)]
+    struct TwoSeat;
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    struct Play;
+
+    impl Game for TwoSeat {
+        type State = u32;
+        type Action = Play;
+        type View = u32;
+
+        fn new_initial_state(&self, _seed: u64) -> u32 {
+            0
+        }
+        fn num_players(&self) -> usize {
+            2
+        }
+        fn active_players(&self, state: &u32) -> ActivePlayers {
+            if *state >= 2 {
+                ActivePlayers::none()
+            } else {
+                ActivePlayers::one(PlayerId::new(*state % 2))
+            }
+        }
+        fn legal_actions(&self, state: &u32, _player: PlayerId) -> Vec<Play> {
+            if *state >= 2 { Vec::new() } else { vec![Play] }
+        }
+        fn apply(&self, state: &mut u32, _player: PlayerId, _action: Play) {
+            *state += 1;
+        }
+        fn is_terminal(&self, state: &u32) -> bool {
+            *state >= 2
+        }
+        fn reward(&self, _state: &u32, _player: PlayerId) -> f64 {
+            0.0
+        }
+        fn view(&self, state: &u32, _viewer: Option<PlayerId>) -> u32 {
+            *state
+        }
+    }
+
+    impl PrintableGame for TwoSeat {
+        fn draw_viewport<B: Backend>(&self, _view: &u32, _term: &mut Terminal<B>, _area: Rect) {}
+        fn get_stats(&self, _view: &u32) -> Vec<(String, String)> {
+            Vec::new()
+        }
+        fn format_action(&self, _action: &Play) -> String {
+            "play".to_owned()
+        }
+    }
+
+    /// Drives `app` for up to `frames` frames on a headless terminal, pressing
+    /// Enter each frame when `enter` is set, and reports whether the match
+    /// finished.
+    fn drive(mut app: SessionApp<TwoSeat>, enter: bool, frames: u64) -> bool {
+        let mut term = Terminal::new(Headless::new(60, 20));
+        for frame in 0..frames {
+            if enter {
+                term.backend_mut().push_event(Event::Key(KeyEvent::new(
+                    KeyCode::Enter,
+                    KeyModifiers::NONE,
+                )));
+            }
+            let ctx = Frame {
+                delta: Duration::from_millis(250),
+                frame,
+            };
+            if step(&mut term, &mut app, &ctx) == Flow::Exit {
+                break;
+            }
+            if app.is_terminal() {
+                return true;
+            }
+        }
+        app.is_terminal()
+    }
+
+    #[test]
+    fn viewer_follows_seat_config() {
+        let bots = standard_bots::<TwoSeat>();
+        // All AI: a neutral spectator (no seat's private view).
+        let all_ai = [SeatKind::Ai(0), SeatKind::Ai(0)];
+        let sim = build_sim(&TwoSeat, &all_ai, &bots, 0);
+        assert_eq!(viewer_for(&all_ai, &sim), None);
+        // One human: fixed at that seat.
+        let one = [SeatKind::Human, SeatKind::Ai(0)];
+        let sim = build_sim(&TwoSeat, &one, &bots, 0);
+        assert_eq!(viewer_for(&one, &sim), Some(PlayerId::new(0)));
+        // Two humans: spectator until a handoff reveals the acting seat.
+        let two = [SeatKind::Human, SeatKind::Human];
+        let sim = build_sim(&TwoSeat, &two, &bots, 0);
+        assert_eq!(viewer_for(&two, &sim), None);
+        assert_eq!(count_humans(&two), 2);
+    }
+
+    #[test]
+    fn all_ai_auto_plays_to_the_end() {
+        // The demo case: no seats human, Auto mode, no input needed.
+        let app = SessionApp::new(TwoSeat, standard_bots(), 1);
+        assert!(
+            drive(app, false, 60),
+            "an all-AI match should finish on its own"
+        );
+    }
+
+    #[test]
+    fn one_human_needs_no_handoff() {
+        // A single human seat plays via the menu (Enter confirms); the AI seat
+        // auto-steps. No handoff gate, so Enter alone drives it to the end.
+        let app = SessionApp::new(TwoSeat, standard_bots(), 2).with_human_seat(0);
+        assert!(drive(app, true, 60), "one human + Enter should finish");
+    }
+
+    #[test]
+    fn two_humans_block_on_a_handoff() {
+        // With two human seats, no seat is revealed until an Enter passes the
+        // device: with no input the match must not advance at all.
+        let app = SessionApp::new(TwoSeat, standard_bots(), 3)
+            .with_human_seat(0)
+            .with_human_seat(1);
+        assert!(
+            !drive(app, false, 60),
+            "a 2-human match must stall on the handoff without input"
+        );
+        // Feeding Enter clears each handoff and confirms each seat's move.
+        let app = SessionApp::new(TwoSeat, standard_bots(), 3)
+            .with_human_seat(0)
+            .with_human_seat(1);
+        assert!(
+            drive(app, true, 60),
+            "Enter should pass the device and play both seats to the end"
+        );
+    }
 }

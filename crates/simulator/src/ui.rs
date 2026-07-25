@@ -20,7 +20,7 @@ use retroglyph_core::{App, Backend, Flow, Frame, Terminal};
 use turnbase::{Game, PlayerId};
 use turnbase_match::Simulator;
 
-use crate::dashboard::{Layout, draw_board_stats_log, print_rows};
+use crate::dashboard::{Layout, draw_board_stats_log, draw_menu, print_rows};
 
 /// A [`Game`] that knows how to render itself, for [`SimulationRunner`].
 ///
@@ -146,8 +146,8 @@ where
             &layout,
         );
 
-        term.print(layout.actions.left(), layout.actions.top(), "-- actions --");
         if over {
+            term.print(layout.actions.left(), layout.actions.top(), "-- actions --");
             print_rows(
                 term,
                 layout.actions,
@@ -160,13 +160,15 @@ where
                 .game()
                 .legal_actions(self.simulator.state(), player);
             let game = self.simulator.game();
-            let selected = self.selected;
-            let labels = actions.iter().enumerate().map(|(row, action)| {
-                let marker = if row == selected { '>' } else { ' ' };
-                format!("{marker} {}", game.format_action(action))
-            });
-            print_rows(term, layout.actions, 1, labels);
+            let labels: Vec<String> = actions.iter().map(|a| game.format_action(a)).collect();
+            let selected = self.selected.min(labels.len().saturating_sub(1));
+            // The header carries the position/total so a scrolled menu still
+            // shows how many actions there are.
+            let header = format!("-- actions ({}/{}) --", selected + 1, labels.len());
+            term.print(layout.actions.left(), layout.actions.top(), &header);
+            draw_menu(term, layout.actions, 1, &labels, selected);
         } else {
+            term.print(layout.actions.left(), layout.actions.top(), "-- actions --");
             print_rows(
                 term,
                 layout.actions,
