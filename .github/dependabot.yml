@@ -5,9 +5,6 @@ version: 2
 #
 # Everything uses the `deps` Conventional Commit scope, which .github/workflows/pr-title.yml accepts
 # and which the changelog config skips, so routine bumps do not appear in release notes.
-#
-# Updates are grouped rather than one-PR-per-dependency: this is a small workspace and a wall of
-# individual bumps is noise that gets rubber-stamped, which is worse than a single reviewable batch.
 
 updates:
   - package-ecosystem: cargo
@@ -18,12 +15,34 @@ updates:
     commit-message:
       prefix: 'chore(deps)'
     groups:
-      # Patch and minor bumps together; a major gets its own PR, since that is the one that needs
-      # actual review.
-      cargo-minor-patch:
+      # The retroglyph crates are one upstream workspace, released together, and their inter-crate
+      # requirements are exact enough that they only ever work as a set: retroglyph-crossterm 0.1.3
+      # depends on retroglyph-core 0.3, so bumping crossterm alone leaves two incompatible copies of
+      # retroglyph-core in the lockfile and the build fails with "mismatched types" between them.
+      #
+      # This is not hypothetical. It produced three unmergeable PRs (#25, #26, #27) on the day
+      # Dependabot was first enabled: one per-crate bump each, none of which could pass CI alone,
+      # including a group that contained only patch-level bumps. Keeping the family in one PR is the
+      # only configuration that can go green.
+      retroglyph:
+        patterns:
+          - 'retroglyph-*'
+
+      # Everything else, patch-only.
+      #
+      # Deliberately NOT `[minor, patch]`. Dependabot classifies an update by the version number
+      # alone, so 0.2.0 -> 0.3.0 is reported as "minor" -- but under Cargo's pre-1.0 rules the minor
+      # slot IS the breaking slot. Most of this tree is 0.x, so grouping "minor" would batch
+      # breaking upgrades into the PR that is supposed to be the safe, rubber-stampable one. Patch
+      # is the only update class that is reliably non-breaking here.
+      #
+      # Minor and major bumps therefore get their own PRs, which is correct: for a 0.x dependency
+      # those are exactly the ones that need a human to read the changelog.
+      cargo-patch:
         update-types:
-          - minor
           - patch
+        exclude-patterns:
+          - 'retroglyph-*'
 
   - package-ecosystem: github-actions
     directory: /
