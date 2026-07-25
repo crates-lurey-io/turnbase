@@ -43,6 +43,14 @@ updates:
           - patch
         exclude-patterns:
           - 'retroglyph-*'
+          - 'turnbase*'
+
+    # This workspace's own crates now carry `version` alongside `path`, which is what makes them
+    # publishable. Those requirements belong to the release tooling, which rewrites them as it
+    # cascades version bumps through the graph. Dependabot sees them as ordinary registry
+    # requirements and would open PRs bumping them, racing the release process for no benefit.
+    ignore:
+      - dependency-name: 'turnbase*'
 
   - package-ecosystem: github-actions
     directory: /

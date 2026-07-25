@@ -80,11 +80,21 @@ jobs:
           tool: just
       - run: just doc
 
+  # Also builds on the declared MSRV, so workspace.package.rust-version is enforced rather than
+  # aspirational. Keep the matrix value and that field in step: raising one without the other
+  # either lets the floor rot or fails CI for a floor nothing actually requires.
   compile:
+    name: compile ${{ matrix.toolchain }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        toolchain: [stable, '1.88']
     steps:
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.toolchain }}
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@v2
         with:

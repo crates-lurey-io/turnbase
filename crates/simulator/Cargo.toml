@@ -3,13 +3,24 @@ name = "turnbase-simulator"
 description = "Interactive retroglyph terminal client for the Turnbase engine, over a turnbase-match turn loop"
 # Always ships the retroglyph UI: it is the crate's whole purpose. A build that
 # wants only the headless turn loop depends on `turnbase-match` directly.
-version.workspace = true
+version = "0.1.0"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+rust-version.workspace = true
+readme = "README.md"
 
 [lints]
 workspace = true
+
+# Document every feature-gated item on docs.rs, not just the default build.
+[package.metadata.docs.rs]
+all-features = true
 
 [features]
 default = ["crossterm"]
