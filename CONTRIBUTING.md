@@ -33,6 +33,11 @@ are denied, so a lint is a build failure rather than a warning.
 | `just test-all`  | nextest + doctests, all features                                |
 | `just test-ci`   | As `test-all`, under the `ci` nextest profile (emits JUnit XML) |
 | `just deny`      | cargo-deny: advisories, licenses, bans, sources                 |
+| `just hack`      | Build each crate with every feature enabled on its own          |
+| `just typos`     | Spell-check source and prose                                    |
+| `just machete`   | Detect unused dependencies                                      |
+| `just taplo`     | Format TOML in place (`taplo-check` to verify)                  |
+| `just actions`   | Lint the workflows (actionlint + zizmor)                        |
 | `just doc`       | rustdoc including private items                                 |
 | `just docs-site` | The full GitHub Pages site into `target/doc`                    |
 | `just coverage`  | Coverage report, opened in a browser                            |

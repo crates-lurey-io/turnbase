@@ -1,0 +1,25 @@
+amends "package://github.com/jdx/hk/releases/download/v1.48.0/hk@1.48.0#/Config.pkl"
+
+// Pre-push only, not pre-commit: work-in-progress commits inside a branch are deliberately
+// unconstrained (see AGENTS.md), so gating each one would fight the workflow. Push is the point
+// where the work becomes someone else's problem.
+//
+// Deliberately a subset of `just check`, not all of it. These two are fast and catch the failures
+// that would otherwise waste a full CI round trip. The slower jobs -- test, doc, hack across 73
+// feature combinations -- stay in CI where they can run in parallel.
+//
+//   cargo bin hk run pre-push    run manually
+//   JJ_HOOKS_SKIP=1 jj push      bypass (sparingly)
+hooks {
+    ["pre-push"] {
+        fix = false
+        steps {
+            ["fmt-check"] {
+                check = "just fmt-check"
+            }
+            ["lint"] {
+                check = "just lint"
+            }
+        }
+    }
+}

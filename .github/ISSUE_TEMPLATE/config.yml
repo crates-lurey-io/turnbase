@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/crates-lurey-io/turnbase/security/advisories/new
+    about: Report privately through a security advisory, not a public issue.
+  - name: Architecture and design rationale
+    url: https://github.com/crates-lurey-io/turnbase/blob/main/ARCHITECTURE.md
+    about: Why the engine is shaped this way, before proposing a change to it.

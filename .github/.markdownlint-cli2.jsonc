@@ -1,0 +1,11 @@
+{
+  // Applies to markdown under .github/ only; markdownlint-cli2 resolves config per file directory.
+  "config": {
+    "line-length": false,
+    "no-duplicate-heading": { "siblings_only": true },
+    "no-inline-html": false,
+    // Issue and PR templates are fragments injected into a larger body, not standalone documents.
+    // A top-level heading in one renders as an oversized title on every PR that uses it.
+    "first-line-heading": false
+  }
+}

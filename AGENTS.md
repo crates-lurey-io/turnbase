@@ -115,6 +115,21 @@ from the PR title's scope. You rarely need to set one by hand.
 one. Split by path with `jj split [FILESETS]`, never interactively. Always pass `-m` to anything
 that would otherwise open `$EDITOR`.
 
+## Pre-push hooks
+
+`hk` (configured in `hk.pkl`) runs on every `jj push`:
+
+- `just fmt-check` (rustfmt + prettier + taplo)
+- `just lint` (clippy + markdownlint + typos + machete)
+
+A deliberate subset of `just check`: these are fast and catch the failures that would otherwise cost
+a full CI round trip, while the slower jobs stay in CI where they run in parallel.
+
+```sh
+cargo bin hk run pre-push    # run manually
+JJ_HOOKS_SKIP=1 jj push      # bypass (sparingly)
+```
+
 ## Docs
 
 | File                                     | What it covers                                                 |
