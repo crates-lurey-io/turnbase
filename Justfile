@@ -58,6 +58,8 @@ doc-gen:
 # tools/publishable-crates.sh): the example game crates and the non-published
 # demos harness are publish = false, so their rustdoc has no business on the
 # public docs site.
+
+# Build the full GitHub Pages site into target/doc.
 docs-site:
     cargo doc --no-deps --all-features $(tools/publishable-crates.sh | jq -r '"-p " + .name' | tr '\n' ' ')
     tools/gen-llms-txt.sh target/doc
@@ -76,6 +78,11 @@ docs-site:
 # nextest runs every test in its own process, in parallel across all of them. It does not run
 # doctests (https://nexte.st/docs/limitations/), so `test-doc` covers those separately. See
 # .config/nextest.toml for the profile config.
+#
+# (Blank line below is load-bearing: `just` uses the comment block directly above a recipe as its
+# `--list` doc string and shows only the last line, so a long rationale renders as a fragment.)
+
+# Run all tests except doctests.
 test *args:
     cargo nextest run --workspace {{ args }}
 
@@ -88,6 +95,8 @@ test-all:
 
 # CI variant: same tests, but under the `ci` nextest profile, which additionally writes JUnit XML
 # to target/nextest/ci/junit.xml for Codecov Test Analytics (see the `test` job in ci.yml).
+
+# Run all tests under the `ci` profile, emitting JUnit XML.
 test-ci:
     cargo nextest run --workspace --all-features --profile ci
     cargo test --workspace --all-features --doc
@@ -96,6 +105,8 @@ test-ci:
 
 # Advisories are soft-failed in CI (a new RUSTSEC advisory against a transitive dep shouldn't
 # turn every unrelated PR red), while licenses/bans/sources are a hard gate.
+
+# Check RUSTSEC advisories (soft-failed in CI).
 deny-advisories:
     cargo deny check advisories
 
@@ -122,6 +133,8 @@ fix:
 # strictly-stronger typecheck than plain `cargo check`, and `test` right after does a full build,
 # so a standalone check pass between them never catches anything those two don't. `just compile`
 # stays available on its own for a fast check-only iteration loop.
+
+# Full local gate: fmt-check, lint, test, doc. Run before every commit.
 check: fmt-check lint test-all doc
 
 clean:
