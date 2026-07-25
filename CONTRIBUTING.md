@@ -4,7 +4,7 @@
 
 Prerequisites:
 
-- Rust (latest stable)
+- Rust (latest stable; the MSRV is 1.88, enforced by a CI matrix job)
 - Node.js (version in `.nvmrc`, for the Markdown/YAML formatters)
 - [`just`](https://github.com/casey/just)
 
@@ -110,6 +110,21 @@ higher one.
 Only the seven library crates under `crates/*` are published; `demos` and every example are
 `publish = false`. `tools/publishable-crates.sh` is the single source of truth for that split and
 drives the docs site, the crates index, and `llms.txt`.
+
+## Versions and dependencies
+
+Every version requirement lives in the root `Cargo.toml` under `[workspace.dependencies]`. Members
+inherit with `<dep> = { workspace = true }` and add their own `features` / `optional` on top. Add a
+new shared dependency there, not in the member manifest.
+
+The `retroglyph-*` crates are one upstream workspace and only work as a set. Bump them together;
+bumping one alone leaves two incompatible copies of `retroglyph-core` in the lockfile, which fails
+with `mismatched types` between two types that have identical names.
+
+The seven publishable crates are **versioned independently** and each carries a literal `version` in
+its own `[package]`, so a change confined to one leaf crate bumps only that crate. The
+`[workspace.package] version` field is inherited by the example games only. You should not normally
+edit any of these by hand; release tooling owns them.
 
 ## Reporting bugs
 

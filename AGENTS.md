@@ -24,6 +24,12 @@ just deny         # cargo-deny: advisories, licenses, bans, sources
 just docs-site    # build the full Pages site locally
 ```
 
+MSRV is **1.88**, declared in `[workspace.package]` and enforced by a CI matrix job. The floor comes
+from retroglyph, which `crates/cli`, `crates/simulator`, and `crates/demos` depend on.
+
+Dependency versions live in one place, `[workspace.dependencies]` in the root `Cargo.toml`. Members
+inherit with `{ workspace = true }`. Do not add a version requirement to a member manifest.
+
 Clippy runs with `all`, `pedantic`, and `nursery` at **deny** (workspace `[lints]`), so a lint is a
 build failure, not a warning. `unsafe_code` is `forbid`. Proper nouns that `clippy::doc_markdown`
 would otherwise flag live in `clippy.toml`'s `doc-valid-idents`; add to that list rather than
