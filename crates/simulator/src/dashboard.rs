@@ -85,11 +85,7 @@ pub fn draw_menu<B: Backend>(
         return;
     }
     let selected = selected.min(items.len() - 1);
-    // Keep `selected` on-screen: scroll only once it would fall past the last
-    // visible row, and never past the point that leaves a blank tail.
-    let start = selected
-        .saturating_sub(capacity - 1)
-        .min(items.len().saturating_sub(capacity));
+    let start = menu_start(capacity, items.len(), selected);
     let rows = items[start..(start + capacity).min(items.len())]
         .iter()
         .enumerate()
@@ -98,6 +94,24 @@ pub fn draw_menu<B: Backend>(
             format!("{marker} {label}")
         });
     print_rows(term, rect, top_offset, rows);
+}
+
+/// The index of the first item visible in a `capacity`-row window over a
+/// `len`-item menu with `selected` on screen.
+///
+/// Keeps `selected` visible: scrolls only once it would fall past the last
+/// visible row, and never past the point that leaves a blank tail. Shared by
+/// [`draw_menu`] and the click hit-test, so a click maps to the row the same
+/// window put there.
+#[must_use]
+pub fn menu_start(capacity: usize, len: usize, selected: usize) -> usize {
+    if capacity == 0 || len == 0 {
+        return 0;
+    }
+    selected
+        .min(len - 1)
+        .saturating_sub(capacity - 1)
+        .min(len.saturating_sub(capacity))
 }
 
 /// Prints `lines` one per row starting `top_offset` rows below `rect`'s top
@@ -147,12 +161,73 @@ pub fn panel<B: Backend>(term: &mut Terminal<B>, rect: Rect, theme: Theme, title
             term.reset_style();
         }
     }
+    panel_inner(rect)
+}
+
+/// The interior of a bordered panel occupying `rect`: one cell in on every
+/// side.
+///
+/// Split out of [`panel`] so hit-testing (which pixel of the log strip a click
+/// landed on, say) derives its rects from the same arithmetic the drawing
+/// does, rather than a second copy that can drift.
+///
+/// Degenerate (possibly zero-sized) when `rect` is too small to hold a border;
+/// the row/menu helpers all clip to it safely.
+#[must_use]
+pub const fn panel_inner(rect: Rect) -> Rect {
     Rect::new(
         rect.left().saturating_add(1),
         rect.top().saturating_add(1),
         rect.width().saturating_sub(2),
         rect.height().saturating_sub(2),
     )
+}
+
+/// Where the log panel's text rows and scrollbar sit inside its outer rect.
+///
+/// Returned by [`log_geometry`] so an interactive caller can hit-test a click
+/// or a wheel event against the same rects [`draw_log`] drew.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LogGeometry {
+    /// The rows the log text is printed into.
+    pub text: Rect,
+    /// The one-cell scrollbar strip along the right edge, present only when
+    /// there is more history than fits.
+    pub bar: Option<Rect>,
+    /// How many log lines are visible at once.
+    pub visible: usize,
+}
+
+/// Splits the log panel at `rect` into its text and scrollbar rects for a
+/// `total`-line history.
+#[must_use]
+pub fn log_geometry(rect: Rect, total: usize) -> LogGeometry {
+    let inner = panel_inner(rect);
+    let visible = usize::from(inner.height());
+    if visible == 0 || inner.width() == 0 || total <= visible {
+        return LogGeometry {
+            text: inner,
+            bar: None,
+            visible,
+        };
+    }
+    let bar = Rect::new(
+        inner.right().saturating_sub(1),
+        inner.top(),
+        1,
+        inner.height(),
+    );
+    let text = Rect::new(
+        inner.left(),
+        inner.top(),
+        inner.width().saturating_sub(1),
+        inner.height(),
+    );
+    LogGeometry {
+        text,
+        bar: Some(bar),
+        visible,
+    }
 }
 
 /// Draws the actions panel frame and returns its interior rect for the caller
@@ -188,43 +263,38 @@ pub fn draw_log<B: Backend>(
     offset: usize,
 ) -> usize {
     let title = if offset > 0 { "Log (scrolled)" } else { "Log" };
-    let inner = panel(term, rect, theme, title);
-    let visible = usize::from(inner.height());
-    if visible == 0 || inner.width() == 0 {
+    panel(term, rect, theme, title);
+
+    let total = log.len();
+    let geometry = log_geometry(rect, total);
+    let visible = geometry.visible;
+    if visible == 0 || geometry.text.width() == 0 {
         return visible;
     }
 
-    let total = log.len();
-    let max_back = total.saturating_sub(visible);
-    let start = max_back.saturating_sub(offset.min(max_back));
-
-    let has_bar = total > visible;
-    if has_bar {
-        let bar = Rect::new(
-            inner.right().saturating_sub(1),
-            inner.top(),
-            1,
-            inner.height(),
-        );
+    let start = log_start(total, visible, offset);
+    if let Some(bar) = geometry.bar {
         Scrollbar::new(total, visible)
             .offset(start)
             .theme(theme)
             .render(bar, term);
     }
-    let text = if has_bar {
-        Rect::new(
-            inner.left(),
-            inner.top(),
-            inner.width().saturating_sub(1),
-            inner.height(),
-        )
-    } else {
-        inner
-    };
 
     let end = (start + visible).min(total);
-    print_rows(term, text, 0, log[start..end].iter().cloned());
+    print_rows(term, geometry.text, 0, log[start..end].iter().cloned());
     visible
+}
+
+/// The index of the first visible log line for a scroll `offset` counted back
+/// from the newest line.
+///
+/// The two coordinate systems meet here: the dashboard tracks "lines back from
+/// the tail" (so appending to the log leaves a pinned view alone), while the
+/// scrollbar and the text slice want an index from the top.
+#[must_use]
+pub const fn log_start(total: usize, visible: usize, offset: usize) -> usize {
+    let max_back = total.saturating_sub(visible);
+    max_back.saturating_sub(if offset < max_back { offset } else { max_back })
 }
 
 /// Draws the viewport, the stats panel, and the log strip -- the parts every

@@ -12,16 +12,19 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::time::Duration;
 
-use retroglyph_core::event::{Event, KeyCode};
-use retroglyph_core::grid::Rect;
+use retroglyph_core::event::{Event, KeyCode, MouseButton, MouseEventKind};
+use retroglyph_core::grid::{Pos, Rect};
 use retroglyph_core::{App, Backend, Flow, Frame, Terminal};
-use retroglyph_widgets::{List, ListState, Modal, StatefulWidget, Theme};
+use retroglyph_widgets::{List, ListState, Modal, StatefulWidget, Theme, offset_for_pos};
 use turnbase::{Determinize, Game, PlayerId};
 use turnbase_bots::{Bot, Ismcts, Mcts, RandomBot};
 use turnbase_match::{PlayerAgent, Simulator};
 
 use crate::PrintableGame;
-use crate::dashboard::{Layout, actions_panel, draw_board_stats_log, draw_menu, print_rows};
+use crate::dashboard::{
+    Layout, actions_panel, draw_board_stats_log, draw_menu, log_geometry, menu_start, panel_inner,
+    print_rows,
+};
 
 /// Search budget for the [`Mcts`]/[`Ismcts`] bot options offered in the setup
 /// modal. Small, so a move computes within a frame and the demo stays
@@ -40,6 +43,10 @@ const SPEEDS: [Duration; 5] = [
 
 /// The default speed index into [`SPEEDS`].
 const DEFAULT_SPEED: usize = 2;
+
+/// Log lines one wheel notch (or one touch-drag step, in the browser demos)
+/// scrolls.
+const WHEEL_LINES: usize = 3;
 
 /// One selectable AI type for a seat.
 ///
@@ -190,6 +197,39 @@ fn down_keys(events: &[Event]) -> impl Iterator<Item = KeyCode> + '_ {
     })
 }
 
+/// Where the log strip is scrolled to, and what the last frame drew.
+///
+/// One struct rather than four loose fields on [`SessionApp`]: they are only
+/// ever read and written together (a scroll, an anchor, a drag), and the
+/// panel's own draw is the only thing that can fill `rows` in.
+#[derive(Clone, Copy, Debug)]
+struct LogScroll {
+    /// Lines back from the newest; 0 pins to the tail.
+    offset: usize,
+    /// Visible log rows as of the last draw, to size a page jump and clamp
+    /// [`offset`](Self::offset).
+    rows: usize,
+    /// History length last seen, to keep a scrolled-back view anchored to the
+    /// same lines as auto-play appends new ones.
+    len_seen: usize,
+    /// Whether the left button is held on the scrollbar, so pointer moves keep
+    /// dragging the thumb even once the pointer slides off the strip.
+    dragging: bool,
+}
+
+impl LogScroll {
+    /// Pinned to the newest line, with a one-row panel assumed until the first
+    /// draw reports the real height.
+    const fn new() -> Self {
+        Self {
+            offset: 0,
+            rows: 1,
+            len_seen: 0,
+            dragging: false,
+        }
+    }
+}
+
 /// What is currently in front of the dashboard. Mutually exclusive by
 /// construction, so only one modal-ish state can be open at a time.
 #[derive(Clone, Copy)]
@@ -233,13 +273,7 @@ where
     sim: Simulator<G>,
     viewer: Option<PlayerId>,
     selected: usize,
-    // Log scroll offset, in lines back from the newest (0 pins to the tail);
-    // the visible log-row count from the last draw (to size a page jump and
-    // clamp the offset); and the history length last seen (to keep a
-    // scrolled-back view anchored as auto-play appends new lines).
-    log_scroll: usize,
-    log_rows: usize,
-    log_len_seen: usize,
+    log: LogScroll,
     // The active overlay (setup modal, help card, or a pending device
     // handoff), or None when the live dashboard is in front. One field, so the
     // three stay mutually exclusive by construction.
@@ -277,9 +311,7 @@ where
             sim,
             viewer,
             selected: 0,
-            log_scroll: 0,
-            log_rows: 1,
-            log_len_seen: 0,
+            log: LogScroll::new(),
             overlay: Overlay::None,
             exit: false,
         }
@@ -342,8 +374,8 @@ where
         self.selected = 0;
         self.ai_elapsed = Duration::ZERO;
         self.paused = false;
-        self.log_scroll = 0;
-        self.log_len_seen = 0;
+        self.log.offset = 0;
+        self.log.len_seen = 0;
     }
 
     /// Restarts with a fresh seed, keeping the seat configuration.
@@ -383,13 +415,103 @@ where
                 KeyCode::Char('-' | '_') => self.speed = self.speed.saturating_sub(1),
                 KeyCode::Char('?' | 'h' | 'H') => self.overlay = Overlay::Help,
                 KeyCode::Char(' ') => self.step_once(),
-                KeyCode::PageUp => self.scroll_log_back(self.log_rows.max(1)),
-                KeyCode::PageDown => self.scroll_log_forward(self.log_rows.max(1)),
+                KeyCode::PageUp => self.scroll_log_back(self.log.rows.max(1)),
+                KeyCode::PageDown => self.scroll_log_forward(self.log.rows.max(1)),
                 KeyCode::Home => self.scroll_log_back(usize::MAX),
-                KeyCode::End => self.log_scroll = 0,
+                KeyCode::End => self.log.offset = 0,
                 _ => {}
             }
         }
+    }
+
+    /// Routes pointer input over the dashboard: the wheel (or a trackpad/touch
+    /// scroll, which arrives as wheel events) scrolls the log, the scrollbar on
+    /// its right edge is click-to-jump and drag-to-scroll, and a click in the
+    /// actions panel picks a move.
+    ///
+    /// `layout` is the current frame's, so the rects hit-tested here are the
+    /// ones the last frame drew. A drag that started on the strip keeps
+    /// tracking the pointer's row even after it slides off (the usual
+    /// scrollbar behavior), and only a button release ends it.
+    fn handle_mouse(&mut self, layout: &Layout, events: &[Event]) {
+        let total = self.sim.log_history().len();
+        let geometry = log_geometry(layout.log, total);
+        for event in events {
+            let Event::Mouse(mouse) = event else { continue };
+            let over_log = layout.log.contains_pos(mouse.position);
+            match mouse.kind {
+                MouseEventKind::ScrollUp if over_log => self.scroll_log_back(WHEEL_LINES),
+                MouseEventKind::ScrollDown if over_log => self.scroll_log_forward(WHEEL_LINES),
+                MouseEventKind::Down(MouseButton::Left) => {
+                    if let Some(bar) = geometry.bar
+                        && bar.contains_pos(mouse.position)
+                    {
+                        self.log.dragging = true;
+                        self.drag_log_to(bar, total, geometry.visible, mouse.position);
+                    } else {
+                        self.click_action(layout, mouse.position);
+                    }
+                }
+                MouseEventKind::Moved if self.log.dragging => {
+                    if let Some(bar) = geometry.bar {
+                        self.drag_log_to(bar, total, geometry.visible, mouse.position);
+                    }
+                }
+                MouseEventKind::Up(MouseButton::Left) => self.log.dragging = false,
+                _ => {}
+            }
+        }
+    }
+
+    /// Picks the action a click at `pos` in the actions panel landed on.
+    ///
+    /// Click to select, click the selected row again to play it, mirroring
+    /// Up/Down then Enter. Two clicks rather than one so a mis-tap on a touch
+    /// screen (where the demos have no keyboard at all) does not silently
+    /// commit somebody's turn.
+    fn click_action(&mut self, layout: &Layout, pos: Pos) {
+        let Some(player) = self.sim.awaiting_human() else {
+            return;
+        };
+        let inner = panel_inner(layout.actions);
+        if !inner.contains_pos(pos) {
+            return;
+        }
+        let mut actions = self.sim.game().legal_actions(self.sim.state(), player);
+        let capacity = usize::from(inner.height());
+        let selected = self.selected.min(actions.len().saturating_sub(1));
+        let row = usize::from(pos.y.saturating_sub(inner.top()));
+        let index = menu_start(capacity, actions.len(), selected) + row;
+        if index >= actions.len() {
+            return;
+        }
+        if index == selected {
+            let action = actions.swap_remove(index);
+            let _ = self.sim.select_human_action(player, action);
+            self.selected = 0;
+        } else {
+            self.selected = index;
+        }
+    }
+
+    /// Scrolls the log so the scrollbar thumb follows a click or drag at `pos`
+    /// on the `bar` track.
+    ///
+    /// `pos` is clamped into the track first, so a drag that wanders off the
+    /// strip pins to its top or bottom rather than being dropped.
+    fn drag_log_to(&mut self, bar: Rect, total: usize, visible: usize, pos: Pos) {
+        let clamped = Pos::new(
+            bar.left(),
+            pos.y
+                .clamp(bar.top(), bar.bottom().saturating_sub(1).max(bar.top())),
+        );
+        let Some(start) = offset_for_pos(bar, total, visible, clamped) else {
+            return;
+        };
+        // The bar speaks in lines from the top; the dashboard tracks lines back
+        // from the newest, so invert against the same maximum draw_log uses.
+        let max_back = total.saturating_sub(visible);
+        self.log.offset = max_back.saturating_sub(start);
     }
 
     /// The furthest the log can scroll back: enough to bring its oldest line to
@@ -398,20 +520,21 @@ where
         self.sim
             .log_history()
             .len()
-            .saturating_sub(self.log_rows.max(1))
+            .saturating_sub(self.log.rows.max(1))
     }
 
     /// Scrolls the log `lines` further into the past, clamped at the oldest.
     fn scroll_log_back(&mut self, lines: usize) {
-        self.log_scroll = self
-            .log_scroll
+        self.log.offset = self
+            .log
+            .offset
             .saturating_add(lines)
             .min(self.max_log_scroll());
     }
 
     /// Scrolls the log `lines` back toward the newest line.
     const fn scroll_log_forward(&mut self, lines: usize) {
-        self.log_scroll = self.log_scroll.saturating_sub(lines);
+        self.log.offset = self.log.offset.saturating_sub(lines);
     }
 
     /// Keeps a scrolled-back log view pinned to the same lines as new entries
@@ -419,12 +542,12 @@ where
     /// Run once per frame before drawing.
     fn anchor_log(&mut self) {
         let len = self.sim.log_history().len();
-        if self.log_scroll > 0 {
-            let grown = len.saturating_sub(self.log_len_seen);
-            self.log_scroll = self.log_scroll.saturating_add(grown);
+        if self.log.offset > 0 {
+            let grown = len.saturating_sub(self.log.len_seen);
+            self.log.offset = self.log.offset.saturating_add(grown);
         }
-        self.log_len_seen = len;
-        self.log_scroll = self.log_scroll.min(self.max_log_scroll());
+        self.log.len_seen = len;
+        self.log.offset = self.log.offset.min(self.max_log_scroll());
     }
 
     /// Advances one decision if the active seat is a bot or chance node (never
@@ -585,7 +708,7 @@ where
             // Cover the board so the previous seat's private view is hidden
             // while the device changes hands.
             Self::draw_handoff(term, seat);
-            self.log_rows
+            self.log.rows
         } else {
             let view = self.sim.game().view(self.sim.state(), self.viewer);
             let rows = draw_board_stats_log(
@@ -595,7 +718,7 @@ where
                 term,
                 &layout,
                 theme,
-                self.log_scroll,
+                self.log.offset,
             );
             self.draw_actions(term, &layout);
             rows
@@ -746,7 +869,7 @@ where
             "m/Tab     Auto <-> Step",
             "p         pause / resume (Auto)",
             "+ / -     speed",
-            "PgUp/PgDn scroll the log",
+            "PgUp/PgDn scroll the log (or the wheel)",
             "Home/End  log oldest / newest",
             "c         configure seats",
             "r         restart (new seed)",
@@ -754,6 +877,7 @@ where
             "Esc       quit",
             "",
             "Your turn: Up/Down select, Enter play",
+            "           or click a row, again to play",
         ];
         #[expect(clippy::cast_possible_truncation, reason = "line count is tiny")]
         let height = lines.len() as u16 + 4;
@@ -775,13 +899,29 @@ where
 {
     fn update(&mut self, term: &mut Terminal<B>, frame: &Frame) -> Flow {
         let events: Vec<Event> = term.drain_events().collect();
+        // The same rects the previous frame drew (the layout is a pure
+        // function of the terminal size), so pointer input hit-tests against
+        // what the viewer is actually looking at.
+        let layout = Layout::new(term.area());
 
         match self.overlay {
-            Overlay::Setup(cursor) => self.handle_setup(cursor, &events),
-            Overlay::Help => self.handle_help(&events),
-            Overlay::Handoff(seat) => self.handle_handoff(seat, &events),
+            // An overlay covers the log, so any drag in progress is over: the
+            // release that would end it goes to the overlay, not the strip.
+            Overlay::Setup(cursor) => {
+                self.log.dragging = false;
+                self.handle_setup(cursor, &events);
+            }
+            Overlay::Help => {
+                self.log.dragging = false;
+                self.handle_help(&events);
+            }
+            Overlay::Handoff(seat) => {
+                self.log.dragging = false;
+                self.handle_handoff(seat, &events);
+            }
             Overlay::None => {
                 self.handle_controls(&events);
+                self.handle_mouse(&layout, &events);
                 // handle_controls may have opened an overlay or set exit; only
                 // touch the match if the live dashboard is still in front.
                 if !self.exit && matches!(self.overlay, Overlay::None) && !self.sim.is_terminal() {
@@ -805,7 +945,7 @@ where
         // Keep a scrolled-back log anchored as new lines arrive, then draw and
         // record how many log rows were visible for the next frame's clamping.
         self.anchor_log();
-        self.log_rows = self.draw(term).max(1);
+        self.log.rows = self.draw(term).max(1);
         let _ = term.present();
 
         if self.exit {
@@ -834,13 +974,16 @@ mod tests {
     use std::time::Duration;
 
     use retroglyph_core::backend::Headless;
-    use retroglyph_core::event::{Event, KeyCode, KeyEvent, KeyModifiers};
-    use retroglyph_core::grid::Rect;
+    use retroglyph_core::event::{
+        Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
+    };
+    use retroglyph_core::grid::{Pos, Rect};
     use retroglyph_core::{Backend, Flow, Frame, Terminal, step};
     use turnbase::{ActivePlayers, Game, PlayerId};
 
     use super::{SeatKind, SessionApp, build_sim, count_humans, standard_bots, viewer_for};
     use crate::PrintableGame;
+    use crate::dashboard::{Layout, log_geometry, log_start, panel_inner};
 
     /// A two-seat game that takes one action per seat then ends. Enough state
     /// to exercise seat scheduling, human turns, and rebuilds; the view is the
@@ -920,6 +1063,236 @@ mod tests {
             }
         }
         app.is_terminal()
+    }
+
+    /// A one-seat game that takes `MANY_MOVES` turns, so its log outgrows any
+    /// log panel and the scroll paths have something to scroll.
+    #[derive(Clone)]
+    struct LongGame;
+
+    const MANY_MOVES: u32 = 200;
+
+    impl Game for LongGame {
+        type State = u32;
+        type Action = Play;
+        type View = u32;
+
+        fn new_initial_state(&self, _seed: u64) -> u32 {
+            0
+        }
+        fn num_players(&self) -> usize {
+            1
+        }
+        fn active_players(&self, state: &u32) -> ActivePlayers {
+            if *state >= MANY_MOVES {
+                ActivePlayers::none()
+            } else {
+                ActivePlayers::one(PlayerId::new(0))
+            }
+        }
+        fn legal_actions(&self, state: &u32, _player: PlayerId) -> Vec<Play> {
+            if *state >= MANY_MOVES {
+                Vec::new()
+            } else {
+                vec![Play]
+            }
+        }
+        fn apply(&self, state: &mut u32, _player: PlayerId, _action: Play) {
+            *state += 1;
+        }
+        fn is_terminal(&self, state: &u32) -> bool {
+            *state >= MANY_MOVES
+        }
+        fn reward(&self, _state: &u32, _player: PlayerId) -> f64 {
+            0.0
+        }
+        fn view(&self, state: &u32, _viewer: Option<PlayerId>) -> u32 {
+            *state
+        }
+    }
+
+    impl PrintableGame for LongGame {
+        fn draw_viewport<B: Backend>(&self, _view: &u32, _term: &mut Terminal<B>, _area: Rect) {}
+        fn get_stats(&self, _view: &u32) -> Vec<(String, String)> {
+            Vec::new()
+        }
+        fn format_action(&self, _action: &Play) -> String {
+            "play".to_owned()
+        }
+    }
+
+    const TEST_COLS: u16 = 60;
+    const TEST_ROWS: u16 = 20;
+
+    /// A session on a filled-up log, plus the terminal it was drawn on, ready
+    /// for the pointer tests to poke at the log strip.
+    fn scrolled_session() -> (SessionApp<LongGame>, Terminal<Headless>) {
+        let mut app = SessionApp::new(LongGame, standard_bots(), 7);
+        let mut term = Terminal::new(Headless::new(TEST_COLS, TEST_ROWS));
+        // Auto mode steps once per SPEEDS[speed]; a generous delta per frame
+        // fills the log in a handful of frames.
+        for frame in 0..40 {
+            let ctx = Frame {
+                delta: Duration::from_secs(1),
+                frame,
+            };
+            let _ = step(&mut term, &mut app, &ctx);
+        }
+        assert!(
+            app.sim.log_history().len() > app.log.rows,
+            "the log must outgrow the panel for the scroll tests to mean anything"
+        );
+        (app, term)
+    }
+
+    /// Feeds `app` one mouse event and runs a frame.
+    fn pointer(
+        app: &mut SessionApp<LongGame>,
+        term: &mut Terminal<Headless>,
+        kind: MouseEventKind,
+        position: Pos,
+    ) {
+        term.backend_mut().push_event(Event::Mouse(MouseEvent {
+            kind,
+            position,
+            pixel_position: None,
+            modifiers: KeyModifiers::NONE,
+        }));
+        let ctx = Frame {
+            delta: Duration::ZERO,
+            frame: 0,
+        };
+        let _ = step(term, app, &ctx);
+    }
+
+    #[test]
+    fn the_wheel_scrolls_the_log_only_over_the_log() {
+        let layout = Layout::new(Rect::new(0, 0, TEST_COLS, TEST_ROWS));
+        let inside = Pos::new(layout.log.left() + 2, layout.log.top() + 1);
+        let elsewhere = Pos::new(layout.viewport.left() + 2, layout.viewport.top() + 1);
+
+        let (mut app, mut term) = scrolled_session();
+        pointer(&mut app, &mut term, MouseEventKind::ScrollUp, inside);
+        assert_eq!(
+            app.log.offset,
+            super::WHEEL_LINES,
+            "a wheel notch over the log should scroll it back"
+        );
+        pointer(&mut app, &mut term, MouseEventKind::ScrollDown, inside);
+        assert_eq!(app.log.offset, 0, "scrolling forward returns to the tail");
+
+        pointer(&mut app, &mut term, MouseEventKind::ScrollUp, elsewhere);
+        assert_eq!(
+            app.log.offset, 0,
+            "the wheel elsewhere on the dashboard must not scroll the log"
+        );
+    }
+
+    #[test]
+    fn dragging_the_scrollbar_moves_through_the_log() {
+        let layout = Layout::new(Rect::new(0, 0, TEST_COLS, TEST_ROWS));
+        let (mut app, mut term) = scrolled_session();
+        let total = app.sim.log_history().len();
+        let geometry = log_geometry(layout.log, total);
+        let bar = geometry.bar.expect("a filled log should show a scrollbar");
+        let max_back = total.saturating_sub(geometry.visible);
+
+        // Grabbing the top of the track jumps to the oldest line...
+        pointer(
+            &mut app,
+            &mut term,
+            MouseEventKind::Down(MouseButton::Left),
+            Pos::new(bar.left(), bar.top()),
+        );
+        assert_eq!(app.log.offset, max_back, "the top of the track is oldest");
+        assert_eq!(
+            log_start(total, geometry.visible, app.log.offset),
+            0,
+            "which is line 0 in the panel's own coordinates"
+        );
+
+        // ...and dragging past the bottom of the track pins to the newest,
+        // even though the pointer has left the strip.
+        pointer(
+            &mut app,
+            &mut term,
+            MouseEventKind::Moved,
+            Pos::new(bar.left(), TEST_ROWS - 1),
+        );
+        assert_eq!(app.log.offset, 0, "the bottom of the track is newest");
+
+        // Releasing ends the drag: later moves are just hovering.
+        pointer(
+            &mut app,
+            &mut term,
+            MouseEventKind::Up(MouseButton::Left),
+            Pos::new(bar.left(), bar.bottom() - 1),
+        );
+        pointer(
+            &mut app,
+            &mut term,
+            MouseEventKind::Moved,
+            Pos::new(bar.left(), bar.top()),
+        );
+        assert_eq!(
+            app.log.offset, 0,
+            "a hover after the release scrolls nothing"
+        );
+    }
+
+    #[test]
+    fn clicking_an_action_row_selects_then_plays_it() {
+        let layout = Layout::new(Rect::new(0, 0, TEST_COLS, TEST_ROWS));
+        let actions = panel_inner(layout.actions);
+        // A human seat, so the actions panel holds a menu rather than a status
+        // line; TwoSeat offers exactly one action per turn.
+        let mut app = SessionApp::new(TwoSeat, standard_bots(), 11).with_human_seat(0);
+        let mut term = Terminal::new(Headless::new(TEST_COLS, TEST_ROWS));
+        let ctx = Frame {
+            delta: Duration::ZERO,
+            frame: 0,
+        };
+        let _ = step(&mut term, &mut app, &ctx);
+        assert_eq!(app.sim.state(), &0, "nothing has been played yet");
+
+        let row = Pos::new(actions.left() + 2, actions.top());
+        let click = |app: &mut SessionApp<TwoSeat>, term: &mut Terminal<Headless>| {
+            term.backend_mut().push_event(Event::Mouse(MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                position: row,
+                pixel_position: None,
+                modifiers: KeyModifiers::NONE,
+            }));
+            let _ = step(term, app, &ctx);
+        };
+
+        // The first click lands on the already-selected row, which is the
+        // confirm: one click is enough when there is a single legal action.
+        click(&mut app, &mut term);
+        assert_eq!(
+            app.sim.state(),
+            &1,
+            "clicking the selected action should play it"
+        );
+    }
+
+    #[test]
+    fn a_click_outside_the_actions_panel_plays_nothing() {
+        let layout = Layout::new(Rect::new(0, 0, TEST_COLS, TEST_ROWS));
+        let mut app = SessionApp::new(TwoSeat, standard_bots(), 12).with_human_seat(0);
+        let mut term = Terminal::new(Headless::new(TEST_COLS, TEST_ROWS));
+        let ctx = Frame {
+            delta: Duration::ZERO,
+            frame: 0,
+        };
+        term.backend_mut().push_event(Event::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            position: Pos::new(layout.viewport.left() + 1, layout.viewport.top() + 1),
+            pixel_position: None,
+            modifiers: KeyModifiers::NONE,
+        }));
+        let _ = step(&mut term, &mut app, &ctx);
+        assert_eq!(app.sim.state(), &0, "the board is not a menu");
     }
 
     #[test]
