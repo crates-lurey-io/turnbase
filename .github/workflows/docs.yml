@@ -20,7 +20,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
@@ -30,18 +30,18 @@ jobs:
         with:
           # wasm-bindgen-cli must match crates/demos/Cargo.toml's wasm-bindgen.
           tool: just,cargo-llvm-cov,wasm-bindgen-cli@0.2.106
-      - uses: cargo-bins/cargo-binstall@v1.13.0
+      - uses: cargo-bins/cargo-binstall@v1.21.1
       # Generates the per-crate and workspace llms.txt files (see
       # tools/gen-llms-txt.sh); not on taiki-e/install-action, so binstall it.
       - run: cargo binstall cargo-llms-txt --no-confirm -q
-      - uses: actions/configure-pages@v5
+      - uses: actions/configure-pages@v6
         id: pages
 
       # rustdoc API docs + a self-hosted per-line HTML coverage report + the
       # landing page, all under target/doc. See the `docs-site` recipe.
       - run: just docs-site
 
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: target/doc
 
@@ -55,5 +55,5 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/deploy-pages@v4
+      - uses: actions/deploy-pages@v5
         id: deployment
