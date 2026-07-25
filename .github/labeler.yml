@@ -1,0 +1,74 @@
+# Path-based PR labeling for actions/labeler (see .github/workflows/labeler.yml). Every matching
+# c: label is applied, so a PR touching several crates gets several labels. `sync-labels: true` in
+# the workflow also removes a label again if a later push stops touching that crate's paths.
+
+'c:core':
+  - changed-files:
+      - any-glob-to-any-file: 'crates/core/**'
+
+'c:bots':
+  - changed-files:
+      - any-glob-to-any-file: 'crates/bots/**'
+
+'c:match':
+  - changed-files:
+      - any-glob-to-any-file: 'crates/match/**'
+
+'c:simulator':
+  - changed-files:
+      - any-glob-to-any-file: 'crates/simulator/**'
+
+'c:protocol':
+  - changed-files:
+      - any-glob-to-any-file: 'crates/protocol/**'
+
+'c:session':
+  - changed-files:
+      - any-glob-to-any-file: 'crates/session/**'
+
+'c:cli':
+  - changed-files:
+      - any-glob-to-any-file: 'crates/cli/**'
+
+'c:demos':
+  - changed-files:
+      - any-glob-to-any-file: 'crates/demos/**'
+
+'c:examples':
+  - changed-files:
+      - any-glob-to-any-file: 'examples/**'
+
+# Anything outside crates/*/ and examples/ is workspace-wide: the root manifests, CI, Justfile,
+# docs/, root markdown, tools/.
+#
+# `any-glob-to-any-file` evaluates each pattern independently and ORs the results, so a lone
+# negation like '!crates/**' matches virtually every file on its own (anything not under crates/),
+# which would put c:workspace on every PR. Instead:
+#   - enumerate the known workspace-level paths explicitly, which fires per-file and combines
+#     correctly with per-crate labels on a mixed PR;
+#   - fall back to `all-globs-to-all-files` on the negations, which requires *every* changed file
+#     to be outside crates/ and examples/ -- a correct if coarser catch-all for new root files not
+#     yet enumerated above.
+'c:workspace':
+  - any:
+      - changed-files:
+          - any-glob-to-any-file:
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'Justfile'
+              - 'clippy.toml'
+              - 'deny.toml'
+              - 'codecov.yml'
+              - 'README.md'
+              - 'AGENTS.md'
+              - 'ARCHITECTURE.md'
+              - 'CONTRIBUTING.md'
+              - 'STYLE_GUIDE.md'
+              - '.github/**'
+              - '.config/**'
+              - 'docs/**'
+              - 'tools/**'
+      - changed-files:
+          - all-globs-to-all-files:
+              - '!crates/**'
+              - '!examples/**'

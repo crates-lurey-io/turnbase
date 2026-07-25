@@ -86,9 +86,24 @@ Work-in-progress commits inside a branch are unconstrained.
 
 This is load-bearing rather than cosmetic: the release automation reads the squashed history to
 compute per-crate version bumps and changelogs, and a changelog generator configured to filter
-unconventional commits will silently drop a non-conforming one rather than fail. CI enforcement of
-PR titles is not wired up yet; follow the convention anyway, because every non-conforming commit
-that lands now is one the changelog will not attribute later.
+unconventional commits will silently drop a non-conforming one rather than fail.
+
+Enforced by `.github/workflows/pr-title.yml`, which validates the title against the grammar and the
+scope list above.
+
+### Labels
+
+`.github/labels.yml` is the source of truth, synced with `.github/scripts/sync-labels.sh`. `c:` area
+labels are applied automatically: from changed paths by `.github/labeler.yml`, and as a fallback
+from the PR title's scope. You rarely need to set one by hand.
+
+| Label            | Meaning                                                                            |
+| ---------------- | ---------------------------------------------------------------------------------- |
+| `c:<area>`       | Which crate or area the change touches. Auto-applied and kept in sync.             |
+| `breaking`       | Semver-breaking change.                                                            |
+| `skip-changelog` | Keep this PR out of the generated changelog. Inert until release automation lands. |
+| `needs-triage`   | New issue from a non-maintainer, not yet reviewed. Auto-applied.                   |
+| `blocked`        | Waiting on an external dependency or decision.                                     |
 
 **Never squash commits.** Prefer multiple well-described commits; use `jj new -m` to start the next
 one. Split by path with `jj split [FILESETS]`, never interactively. Always pass `-m` to anything

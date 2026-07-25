@@ -1,0 +1,60 @@
+name: PR Title
+
+# Conventional Commits are enforced on PR titles, not individual commits. The repo is squash-merge
+# only with the squash message defaulting to the PR title, so the title becomes the single commit on
+# main. That keeps the history a changelog generator reads fully conventional while work-in-progress
+# commits inside a branch stay unconstrained.
+#
+# This is load-bearing rather than cosmetic: a changelog generator configured to filter
+# unconventional commits drops a non-conforming one silently instead of failing, so it would simply
+# be missing from the release notes with nothing to alert on.
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  pull-requests: read
+
+jobs:
+  pr-title:
+    name: Validate PR title
+    runs-on: ubuntu-latest
+    steps:
+      - uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # Mirrors the commit_parsers the changelog config will use.
+          types: |
+            feat
+            fix
+            refactor
+            docs
+            perf
+            style
+            test
+            chore
+            build
+            ci
+            revert
+          # Crate directories under crates/*, plus examples/, plus two workspace-level scopes:
+          #   workspace - tooling, CI, root docs, release config
+          #   deps      - dependency bumps (also what Dependabot is configured to use)
+          scopes: |
+            core
+            bots
+            match
+            simulator
+            protocol
+            session
+            cli
+            demos
+            examples
+            workspace
+            deps
+          # A scopeless title stays valid: release automation opens its own scopeless Release PR,
+          # and requiring a scope would fail it. `workspace` is the convention, not a hard rule.
+          requireScope: false
+          # A `!` before the colon (feat(core)!: ...) is valid Conventional Commits grammar and is
+          # accepted as the breaking-change signal.
