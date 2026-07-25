@@ -557,9 +557,9 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
 name = "retroglyph-core"
-version = "0.2.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5fbf0d8383a98cc5415d47c21f4855ee44c51af2a87028d9478b1700d7fde95a"
+checksum = "2cb4b0aa268d8eb0e817d19f7558c9df21434cc2020a799b0cc100928ac8aa5f"
 dependencies = [
  "alpha-blend",
  "bitflags",
@@ -573,9 +573,9 @@ dependencies = [
 
 [[package]]
 name = "retroglyph-crossterm"
-version = "0.1.1"
+version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ac54ac141eceefe5948d1190bdbf6b928315fc46ea57e64181b71246f26363ca"
+checksum = "b4684d6903ccc418dfd65b7810a6f6b9b49e6bcc64ded013ca097963f5041900"
 dependencies = [
  "crossterm",
  "retroglyph-core",
@@ -584,19 +584,18 @@ dependencies = [
 
 [[package]]
 name = "retroglyph-terminal"
-version = "0.1.1"
+version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "54fcfc1b965674df4c72fd0efa4c8340abb1d89be9caaedddf0e2f63e9a3768d"
+checksum = "837d17df9672d2e850d824cb7feb1612b78a4c8b8e984d78d99ebd4e47ea5656"
 dependencies = [
  "retroglyph-core",
- "unicode-width",
 ]
 
 [[package]]
 name = "retroglyph-terminal-wasm"
-version = "0.1.1"
+version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "701383a4786700acf96a088331192bd06fa1a589bf8149bb14d73e4cd6266e71"
+checksum = "f19d59504338879a5f51b37d6b38533174895cac0728f2284157641d086fe412"
 dependencies = [
  "log",
  "retroglyph-core",
@@ -606,9 +605,9 @@ dependencies = [
 
 [[package]]
 name = "retroglyph-widgets"
-version = "0.2.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f817a3cf8f51876190752f2b3ce42ce59edc6f36171f93ddc05eca52af5491f8"
+checksum = "6c6ed29c0e1015f30d15b1575e939e5a6f796378b5b30935785829740a1f71fc"
 dependencies = [
  "retroglyph-core",
  "unicode-width",

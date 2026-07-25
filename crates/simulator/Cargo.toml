@@ -23,8 +23,8 @@ crossterm = ["dep:retroglyph-crossterm"]
 turnbase = { path = "../core" }
 turnbase-match = { path = "../match" }
 turnbase-bots = { path = "../bots" }
-retroglyph-core = { version = "0.2" }
+retroglyph-core = { version = "0.3" }
 # Backend-generic widgets (the setup modal, seat list). wasm-safe, so the web
 # demos get the same interactive session as the native client.
-retroglyph-widgets = { version = "0.2" }
+retroglyph-widgets = { version = "0.3" }
 retroglyph-crossterm = { version = "0.1", optional = true }

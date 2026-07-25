@@ -19,6 +19,7 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::time::Duration;
 
+use retroglyph_core::backend::Input;
 use retroglyph_core::{App, Terminal};
 use retroglyph_terminal_wasm::TerminalWasm;
 use turnbase::{Game, PlayerId};
