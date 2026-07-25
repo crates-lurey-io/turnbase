@@ -21,14 +21,14 @@ cli = ["dep:turnbase-cli"]
 ui = ["cli", "dep:turnbase-simulator", "dep:retroglyph-core", "turnbase-cli/tui"]
 
 [dependencies]
-turnbase = { path = "../../crates/core", features = ["serde"] }
-serde = { version = "1", features = ["derive"] }
-turnbase-cli = { path = "../../crates/cli", default-features = false, optional = true }
-turnbase-simulator = { path = "../../crates/simulator", optional = true }
-retroglyph-core = { version = "0.3", optional = true }
+turnbase = { workspace = true, features = ["serde"] }
+serde = { workspace = true, features = ["derive"] }
+turnbase-cli = { workspace = true, optional = true }
+turnbase-simulator = { workspace = true, features = ["crossterm"], optional = true }
+retroglyph-core = { workspace = true, optional = true }
 
 [dev-dependencies]
-turnbase-bots = { path = "../../crates/bots" }
+turnbase-bots = { workspace = true }
 
 [[bin]]
 name = "hanabi"

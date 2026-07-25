@@ -17,13 +17,13 @@ default = ["tui"]
 tui = ["dep:turnbase-simulator"]
 
 [dependencies]
-turnbase = { path = "../core" }
-turnbase-bots = { path = "../bots" }
-turnbase-match = { path = "../match" }
-turnbase-protocol = { path = "../protocol" }
-turnbase-session = { path = "../session" }
-turnbase-simulator = { path = "../simulator", optional = true }
+turnbase = { workspace = true }
+turnbase-bots = { workspace = true }
+turnbase-match = { workspace = true }
+turnbase-protocol = { workspace = true }
+turnbase-session = { workspace = true }
+turnbase-simulator = { workspace = true, features = ["crossterm"], optional = true }
 clap = { version = "4", features = ["derive"] }
-log = "0.4"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+log = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }

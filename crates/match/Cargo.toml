@@ -10,6 +10,6 @@ repository.workspace = true
 workspace = true
 
 [dependencies]
-turnbase = { path = "../core" }
-turnbase-bots = { path = "../bots" }
-log = "0.4"
+turnbase = { workspace = true }
+turnbase-bots = { workspace = true }
+log = { workspace = true }

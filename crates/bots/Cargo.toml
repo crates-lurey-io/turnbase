@@ -10,10 +10,10 @@ repository.workspace = true
 workspace = true
 
 [dependencies]
-turnbase = { path = "../core" }
+turnbase = { workspace = true }
 
 [dev-dependencies]
 tic_tac_toe = { path = "../../examples/tic_tac_toe", default-features = false }
 high_card = { path = "../../examples/high_card", default-features = false }
 coup = { path = "../../examples/coup", default-features = false }
-proptest = "1"
+proptest = { workspace = true }

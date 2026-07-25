@@ -23,13 +23,13 @@ app = ["dep:retroglyph-core", "dep:turnbase-match", "dep:turnbase-bots"]
 ui = ["cli", "app", "dep:retroglyph-crossterm"]
 
 [dependencies]
-turnbase = { path = "../../crates/core", features = ["serde"] }
-serde = { version = "1", features = ["derive"] }
-turnbase-cli = { path = "../../crates/cli", default-features = false, optional = true }
-turnbase-match = { path = "../../crates/match", optional = true }
-turnbase-bots = { path = "../../crates/bots", optional = true }
-retroglyph-core = { version = "0.3", optional = true }
-retroglyph-crossterm = { version = "0.1", optional = true }
+turnbase = { workspace = true, features = ["serde"] }
+serde = { workspace = true, features = ["derive"] }
+turnbase-cli = { workspace = true, optional = true }
+turnbase-match = { workspace = true, optional = true }
+turnbase-bots = { workspace = true, optional = true }
+retroglyph-core = { workspace = true, optional = true }
+retroglyph-crossterm = { workspace = true, optional = true }
 
 [[bin]]
 name = "blackjack"
