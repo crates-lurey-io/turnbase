@@ -28,7 +28,7 @@ serde = { version = "1", features = ["derive"] }
 turnbase-cli = { path = "../../crates/cli", default-features = false, optional = true }
 turnbase-match = { path = "../../crates/match", optional = true }
 turnbase-bots = { path = "../../crates/bots", optional = true }
-retroglyph-core = { version = "0.2", optional = true }
+retroglyph-core = { version = "0.3", optional = true }
 retroglyph-crossterm = { version = "0.1", optional = true }
 
 [[bin]]
