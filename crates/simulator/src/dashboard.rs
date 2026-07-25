@@ -63,6 +63,42 @@ impl Layout {
     }
 }
 
+/// Draws a selectable menu of `items` into `rect` (below `top_offset` rows),
+/// scrolling so the `selected` row stays visible when the list is taller than
+/// the panel, and marking the selection with a `>`.
+///
+/// A long legal-action list (Risk's fortify options, say) otherwise clips at
+/// the panel's bottom edge and can hide the very row the cursor is on; this
+/// windows the list around the selection instead. The caller shows the total
+/// count in the panel header, so the window is a plain slice with no in-panel
+/// scroll chrome.
+pub fn draw_menu<B: Backend>(
+    term: &mut Terminal<B>,
+    rect: Rect,
+    top_offset: u16,
+    items: &[String],
+    selected: usize,
+) {
+    let capacity = usize::from(rect.height().saturating_sub(top_offset));
+    if capacity == 0 || items.is_empty() {
+        return;
+    }
+    let selected = selected.min(items.len() - 1);
+    // Keep `selected` on-screen: scroll only once it would fall past the last
+    // visible row, and never past the point that leaves a blank tail.
+    let start = selected
+        .saturating_sub(capacity - 1)
+        .min(items.len().saturating_sub(capacity));
+    let rows = items[start..(start + capacity).min(items.len())]
+        .iter()
+        .enumerate()
+        .map(|(offset, label)| {
+            let marker = if start + offset == selected { '>' } else { ' ' };
+            format!("{marker} {label}")
+        });
+    print_rows(term, rect, top_offset, rows);
+}
+
 /// Prints `lines` one per row starting `top_offset` rows below `rect`'s top
 /// edge, clipping to `rect`'s width and dropping rows past its bottom edge, so
 /// overlong content clips instead of spilling into the next panel.
