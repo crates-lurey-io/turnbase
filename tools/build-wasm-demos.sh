@@ -47,11 +47,16 @@ for i in "${!games[@]}"; do
 
   sed -e "s/__GAME__/$game/g" -e "s/__TITLE__/$title/g" \
     "$templates/game-template.html" > "$out_dir/$game/index.html"
-  cards="$cards<a class=\"card\" href=\"./$game/\"><h2>$title &rarr;</h2></a>\n"
+  # Literal arrow glyph, not the &rarr; entity: the cards are spliced into the
+  # index below, and an ampersand in substituted text is the exact thing a sed
+  # replacement rewrites into the matched pattern (&rarr; -> __CARDS__rarr;).
+  # A plain U+2192 (→) has no such footgun no matter how it gets substituted.
+  cards="$cards<a class=\"card\" href=\"./$game/\"><h2>$title →</h2></a>\n"
 done
 
 # Plain-string substitution rather than sed: the accumulated cards HTML spans
-# multiple lines once expanded.
+# multiple lines once expanded, and bash parameter expansion (unlike sed)
+# never treats & or \ in the replacement text specially.
 cards_expanded="$(printf '%b' "$cards")"
 template="$(cat "$templates/index-template.html")"
 echo "${template//__CARDS__/$cards_expanded}" > "$out_dir/index.html"
