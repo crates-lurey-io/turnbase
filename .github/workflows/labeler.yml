@@ -19,15 +19,19 @@ on:
   issues:
     types: [opened]
 
+# Read-only at the workflow level; each job raises only what it needs. Granting pull-requests:
+# write and issues: write workflow-wide would hand the issue-triage job the ability to write PRs
+# and vice versa, for no reason. Flagged by zizmor's excessive-permissions audit.
 permissions:
   contents: read
-  pull-requests: write
-  issues: write
 
 jobs:
   path-labels:
     if: github.event_name == 'pull_request_target'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - uses: actions/labeler@v7
         with:
@@ -37,6 +41,9 @@ jobs:
   title-labels:
     if: github.event_name == 'pull_request_target'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - name: 'Derive c: label from PR title'
         uses: actions/github-script@v9
@@ -72,6 +79,9 @@ jobs:
   triage-labels:
     if: github.event_name == 'issues'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
     steps:
       - name: Label new issues needs-triage unless filed by a maintainer
         uses: actions/github-script@v9

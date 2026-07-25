@@ -13,11 +13,7 @@ confidence-threshold = 0.8
 #
 # `Unicode-3.0` is the exception that does need listing: `unicode-ident` is
 # `(MIT OR Apache-2.0) AND Unicode-3.0`, and the AND makes it mandatory rather than selectable.
-allow = [
-  "Apache-2.0",
-  "MIT",
-  "Unicode-3.0",
-]
+allow = ["Apache-2.0", "MIT", "Unicode-3.0"]
 
 [advisories]
 version = 2

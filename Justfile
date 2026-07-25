@@ -20,11 +20,23 @@ markdown:
 # Auto-fix Rust + Markdown/YAML/JSON formatting.
 fmt:
     cargo fmt --all
+    taplo fmt
     @[ -x tools/node_modules/.bin/prettier ] || npm ci --prefix tools
     npm --prefix tools run format
 
 # Check-only counterpart of `fmt` (what CI's format job runs).
-fmt-check: rustfmt prettier
+fmt-check: rustfmt prettier taplo-check
+
+# TOML formatting. Config in taplo.toml, which sets indent 4 to agree with .editorconfig -- taplo
+# defaults to 2 and does not read .editorconfig.
+
+# Format TOML in place.
+taplo:
+    taplo fmt
+
+# Check TOML formatting.
+taplo-check:
+    taplo fmt --check
 
 # ── Linting ──────────────────────────────────────────────────────────────────
 
@@ -34,7 +46,23 @@ clippy:
 clippy-fix:
     cargo clippy --workspace --all-targets --all-features --fix
 
-lint: clippy markdown
+# Spell-check source and prose. Allow-list in typos.toml.
+typos:
+    typos
+
+# Detect dependencies declared but never used.
+machete:
+    cargo machete
+
+# `--all-features` structurally cannot catch a missing #[cfg(feature)], because it never builds the
+# combination where a feature is off. This repo documents three such configurations: turnbase
+# without serde, turnbase-simulator without crossterm, turnbase-cli without tui.
+
+# Build every crate with each feature enabled on its own (73 combinations).
+hack:
+    cargo hack check --each-feature --no-dev-deps --workspace
+
+lint: clippy markdown typos machete
 
 # ── Build ────────────────────────────────────────────────────────────────────
 
@@ -145,7 +173,7 @@ fix:
 # stays available on its own for a fast check-only iteration loop.
 
 # Full local gate: fmt-check, lint, test, doc. Run before every commit.
-check: fmt-check lint test-all doc
+check: fmt-check lint hack test-all doc
 
 clean:
     cargo clean

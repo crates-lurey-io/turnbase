@@ -1,0 +1,26 @@
+# Configuration for `typos` (https://github.com/crate-ci/typos), run by `just typos`.
+#
+# Keep this list short and justified. A growing allow-list usually means the checker is being
+# argued with rather than listened to.
+
+[files]
+extend-exclude = [
+    # Generated from commit messages, so they are full of abbreviated SHAs that look like typos
+    # (`59c9dbe` reads as `dbe` -> `be`). Nothing here is hand-written prose worth checking.
+    "CHANGELOG.md",
+    "crates/*/CHANGELOG.md",
+    # Not ours to spell-check.
+    "tools/node_modules/**",
+    "tools/package-lock.json",
+    "Cargo.lock",
+    # Gitignored scratch.
+    ".matan/**",
+    ".pi/**",
+    ".pi-subagents/**",
+]
+
+[default.extend-words]
+# Project names, not misspellings. `ratatui` is otherwise "corrected" to `ratatouille`.
+ratatui = "ratatui"
+# `mis-tap`, `mis-click`: correct hyphenated English that typos reads as a truncated `miss`/`mist`.
+mis = "mis"

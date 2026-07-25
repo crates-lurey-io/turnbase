@@ -29,11 +29,21 @@ web-time = { workspace = true }
 # feature so a single game's demo (`--example <game> --features <game>`) links
 # only that game, not all five. Each is pulled with only its backend-generic
 # rendering feature (no CLI, no crossterm) so it compiles for wasm32.
-coup = { path = "../../examples/coup", default-features = false, features = ["printable"], optional = true }
-risk = { path = "../../examples/risk", default-features = false, features = ["printable"], optional = true }
-minion_battle = { path = "../../examples/minion_battle", default-features = false, features = ["printable"], optional = true }
-woodland = { path = "../../examples/woodland", default-features = false, features = ["printable"], optional = true }
-blackjack = { path = "../../examples/blackjack", default-features = false, features = ["app"], optional = true }
+coup = { path = "../../examples/coup", default-features = false, features = [
+    "printable",
+], optional = true }
+risk = { path = "../../examples/risk", default-features = false, features = [
+    "printable",
+], optional = true }
+minion_battle = { path = "../../examples/minion_battle", default-features = false, features = [
+    "printable",
+], optional = true }
+woodland = { path = "../../examples/woodland", default-features = false, features = [
+    "printable",
+], optional = true }
+blackjack = { path = "../../examples/blackjack", default-features = false, features = [
+    "app",
+], optional = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 # Pinned to match retroglyph-terminal-wasm's own wasm-bindgen so the generated

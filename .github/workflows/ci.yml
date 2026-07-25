@@ -33,10 +33,11 @@ jobs:
           cache-dependency-path: tools/package-lock.json
       - uses: taiki-e/install-action@v2
         with:
-          tool: just
+          tool: just,taplo-cli
       - run: npm ci --prefix tools
       - run: just rustfmt
       - run: just prettier
+      - run: just taplo-check
 
   lint:
     runs-on: ubuntu-latest
@@ -53,10 +54,12 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@v2
         with:
-          tool: just,cargo-deny
+          tool: just,cargo-deny,typos-cli,cargo-machete
       - run: npm ci --prefix tools
       - run: just clippy
       - run: just markdown
+      - run: just typos
+      - run: just machete
       # Soft-failed on purpose: a newly published RUSTSEC advisory against a transitive
       # dependency would otherwise turn every unrelated PR red overnight, for something no PR
       # author can fix. The finding is still visible in the job log and annotated on the run.
@@ -100,6 +103,21 @@ jobs:
         with:
           tool: just
       - run: just compile
+
+  # Builds each crate with every feature enabled on its own. `--all-features`, which every other
+  # job here uses, never builds the combination where a feature is OFF, so it structurally cannot
+  # catch a missing #[cfg(feature)] -- and this repo documents three no-default-features
+  # configurations as supported.
+  hack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: just,cargo-hack
+      - run: just hack
 
   test:
     runs-on: ubuntu-latest
@@ -237,6 +255,7 @@ jobs:
       - lint
       - docs
       - compile
+      - hack
       - test
       - coverage
     if: ${{ always() }}
