@@ -21,7 +21,7 @@ use turnbase_bots::{Bot, Ismcts, Mcts, RandomBot};
 use turnbase_match::{PlayerAgent, Simulator};
 
 use crate::PrintableGame;
-use crate::dashboard::{Layout, draw_board_stats_log, draw_menu, print_rows};
+use crate::dashboard::{Layout, actions_panel, draw_board_stats_log, draw_menu, print_rows};
 
 /// Search budget for the [`Mcts`]/[`Ismcts`] bot options offered in the setup
 /// modal. Small, so a move computes within a frame and the demo stays
@@ -233,6 +233,13 @@ where
     sim: Simulator<G>,
     viewer: Option<PlayerId>,
     selected: usize,
+    // Log scroll offset, in lines back from the newest (0 pins to the tail);
+    // the visible log-row count from the last draw (to size a page jump and
+    // clamp the offset); and the history length last seen (to keep a
+    // scrolled-back view anchored as auto-play appends new lines).
+    log_scroll: usize,
+    log_rows: usize,
+    log_len_seen: usize,
     // The active overlay (setup modal, help card, or a pending device
     // handoff), or None when the live dashboard is in front. One field, so the
     // three stay mutually exclusive by construction.
@@ -270,6 +277,9 @@ where
             sim,
             viewer,
             selected: 0,
+            log_scroll: 0,
+            log_rows: 1,
+            log_len_seen: 0,
             overlay: Overlay::None,
             exit: false,
         }
@@ -332,6 +342,8 @@ where
         self.selected = 0;
         self.ai_elapsed = Duration::ZERO;
         self.paused = false;
+        self.log_scroll = 0;
+        self.log_len_seen = 0;
     }
 
     /// Restarts with a fresh seed, keeping the seat configuration.
@@ -371,9 +383,48 @@ where
                 KeyCode::Char('-' | '_') => self.speed = self.speed.saturating_sub(1),
                 KeyCode::Char('?' | 'h' | 'H') => self.overlay = Overlay::Help,
                 KeyCode::Char(' ') => self.step_once(),
+                KeyCode::PageUp => self.scroll_log_back(self.log_rows.max(1)),
+                KeyCode::PageDown => self.scroll_log_forward(self.log_rows.max(1)),
+                KeyCode::Home => self.scroll_log_back(usize::MAX),
+                KeyCode::End => self.log_scroll = 0,
                 _ => {}
             }
         }
+    }
+
+    /// The furthest the log can scroll back: enough to bring its oldest line to
+    /// the top of the panel, and no further.
+    fn max_log_scroll(&self) -> usize {
+        self.sim
+            .log_history()
+            .len()
+            .saturating_sub(self.log_rows.max(1))
+    }
+
+    /// Scrolls the log `lines` further into the past, clamped at the oldest.
+    fn scroll_log_back(&mut self, lines: usize) {
+        self.log_scroll = self
+            .log_scroll
+            .saturating_add(lines)
+            .min(self.max_log_scroll());
+    }
+
+    /// Scrolls the log `lines` back toward the newest line.
+    const fn scroll_log_forward(&mut self, lines: usize) {
+        self.log_scroll = self.log_scroll.saturating_sub(lines);
+    }
+
+    /// Keeps a scrolled-back log view pinned to the same lines as new entries
+    /// arrive during auto-play, then clamps the offset to what currently fits.
+    /// Run once per frame before drawing.
+    fn anchor_log(&mut self) {
+        let len = self.sim.log_history().len();
+        if self.log_scroll > 0 {
+            let grown = len.saturating_sub(self.log_len_seen);
+            self.log_scroll = self.log_scroll.saturating_add(grown);
+        }
+        self.log_len_seen = len;
+        self.log_scroll = self.log_scroll.min(self.max_log_scroll());
     }
 
     /// Advances one decision if the active seat is a bot or chance node (never
@@ -524,41 +575,48 @@ where
         }
     }
 
-    fn draw<B: Backend>(&self, term: &mut Terminal<B>) {
+    /// Draws one frame and returns the number of visible log rows (so the
+    /// caller can clamp scrolling and size a page jump).
+    fn draw<B: Backend>(&self, term: &mut Terminal<B>) -> usize {
         term.reset_style();
+        let theme = Theme::DARK;
         let layout = Layout::new(term.area());
-        if let Overlay::Handoff(seat) = self.overlay {
+        let log_rows = if let Overlay::Handoff(seat) = self.overlay {
             // Cover the board so the previous seat's private view is hidden
             // while the device changes hands.
             Self::draw_handoff(term, seat);
+            self.log_rows
         } else {
             let view = self.sim.game().view(self.sim.state(), self.viewer);
-            draw_board_stats_log(
+            let rows = draw_board_stats_log(
                 self.sim.game(),
                 &view,
                 self.sim.log_history(),
                 term,
                 &layout,
+                theme,
+                self.log_scroll,
             );
             self.draw_actions(term, &layout);
-        }
+            rows
+        };
         self.draw_status(term, &layout);
         match self.overlay {
             Overlay::Setup(cursor) => self.draw_setup(term, cursor),
             Overlay::Help => Self::draw_help(term),
             Overlay::None | Overlay::Handoff(_) => {}
         }
+        log_rows
     }
 
     fn draw_actions<B: Backend>(&self, term: &mut Terminal<B>, layout: &Layout) {
-        let left = layout.actions.left();
-        let top = layout.actions.top();
+        let theme = Theme::DARK;
         if self.sim.is_terminal() {
-            term.print(left, top, "-- actions --");
+            let inner = actions_panel(term, layout.actions, theme, None);
             print_rows(
                 term,
-                layout.actions,
-                1,
+                inner,
+                0,
                 std::iter::once("match over -- r restart, c config".to_owned()),
             );
         } else if let Some(player) = self.sim.awaiting_human() {
@@ -566,13 +624,17 @@ where
             let game = self.sim.game();
             let labels: Vec<String> = actions.iter().map(|a| game.format_action(a)).collect();
             let selected = self.selected.min(labels.len().saturating_sub(1));
-            // Position/total in the header, so a scrolled menu still tells you
-            // how many actions there are.
-            let header = format!("-- actions ({}/{}) --", selected + 1, labels.len());
-            term.print(left, top, &header);
-            draw_menu(term, layout.actions, 1, &labels, selected);
+            // Position/total in the panel title, so a scrolled menu still tells
+            // you how many actions there are.
+            let inner = actions_panel(
+                term,
+                layout.actions,
+                theme,
+                Some((selected + 1, labels.len())),
+            );
+            draw_menu(term, inner, 0, &labels, selected);
         } else {
-            term.print(left, top, "-- actions --");
+            let inner = actions_panel(term, layout.actions, theme, None);
             let label = if !self.auto {
                 "(step: press Space)"
             } else if self.paused {
@@ -580,7 +642,7 @@ where
             } else {
                 "(AI thinking...)"
             };
-            print_rows(term, layout.actions, 1, std::iter::once(label.to_owned()));
+            print_rows(term, inner, 0, std::iter::once(label.to_owned()));
         }
     }
 
@@ -680,14 +742,16 @@ where
     fn draw_help<B: Backend>(term: &mut Terminal<B>) {
         let theme = Theme::DARK;
         let lines = [
-            "Space   step one decision",
-            "m/Tab   Auto <-> Step",
-            "p       pause / resume (Auto)",
-            "+ / -   speed",
-            "c       configure seats",
-            "r       restart (new seed)",
-            "?       toggle this help",
-            "Esc     quit",
+            "Space     step one decision",
+            "m/Tab     Auto <-> Step",
+            "p         pause / resume (Auto)",
+            "+ / -     speed",
+            "PgUp/PgDn scroll the log",
+            "Home/End  log oldest / newest",
+            "c         configure seats",
+            "r         restart (new seed)",
+            "?         toggle this help",
+            "Esc       quit",
             "",
             "Your turn: Up/Down select, Enter play",
         ];
@@ -738,7 +802,10 @@ where
             }
         }
 
-        self.draw(term);
+        // Keep a scrolled-back log anchored as new lines arrive, then draw and
+        // record how many log rows were visible for the next frame's clamping.
+        self.anchor_log();
+        self.log_rows = self.draw(term).max(1);
         let _ = term.present();
 
         if self.exit {

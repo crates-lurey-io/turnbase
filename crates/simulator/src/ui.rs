@@ -17,10 +17,11 @@ use std::time::Duration;
 use retroglyph_core::event::{Event, KeyCode};
 use retroglyph_core::grid::Rect;
 use retroglyph_core::{App, Backend, Flow, Frame, Terminal};
+use retroglyph_widgets::Theme;
 use turnbase::{Game, PlayerId};
 use turnbase_match::Simulator;
 
-use crate::dashboard::{Layout, draw_board_stats_log, draw_menu, print_rows};
+use crate::dashboard::{Layout, actions_panel, draw_board_stats_log, draw_menu, print_rows};
 
 /// A [`Game`] that knows how to render itself, for [`SimulationRunner`].
 ///
@@ -138,20 +139,25 @@ where
             .game()
             .view(self.simulator.state(), self.viewer);
 
-        draw_board_stats_log(
+        let theme = Theme::DARK;
+        // The auto-only runner never scrolls the log, so it always pins to the
+        // newest line (offset 0).
+        let _ = draw_board_stats_log(
             self.simulator.game(),
             &view,
             self.simulator.log_history(),
             term,
             &layout,
+            theme,
+            0,
         );
 
         if over {
-            term.print(layout.actions.left(), layout.actions.top(), "-- actions --");
+            let inner = actions_panel(term, layout.actions, theme, None);
             print_rows(
                 term,
-                layout.actions,
-                1,
+                inner,
+                0,
                 std::iter::once("match over -- Enter/Esc to exit".to_owned()),
             );
         } else if let Some(player) = self.simulator.awaiting_human() {
@@ -162,17 +168,19 @@ where
             let game = self.simulator.game();
             let labels: Vec<String> = actions.iter().map(|a| game.format_action(a)).collect();
             let selected = self.selected.min(labels.len().saturating_sub(1));
-            // The header carries the position/total so a scrolled menu still
-            // shows how many actions there are.
-            let header = format!("-- actions ({}/{}) --", selected + 1, labels.len());
-            term.print(layout.actions.left(), layout.actions.top(), &header);
-            draw_menu(term, layout.actions, 1, &labels, selected);
-        } else {
-            term.print(layout.actions.left(), layout.actions.top(), "-- actions --");
-            print_rows(
+            let inner = actions_panel(
                 term,
                 layout.actions,
-                1,
+                theme,
+                Some((selected + 1, labels.len())),
+            );
+            draw_menu(term, inner, 0, &labels, selected);
+        } else {
+            let inner = actions_panel(term, layout.actions, theme, None);
+            print_rows(
+                term,
+                inner,
+                0,
                 std::iter::once("(AI thinking...)".to_owned()),
             );
         }
