@@ -1,0 +1,40 @@
+name: Feature request
+description: Propose a change to the engine or a new capability.
+labels: ['needs-triage']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Read [ARCHITECTURE.md](https://github.com/crates-lurey-io/turnbase/blob/main/ARCHITECTURE.md)
+        first if the proposal touches the `Game` trait. Several shapes that look like omissions are
+        deliberate, and it records the reasoning for each.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: |
+        What you are trying to build that is awkward or impossible today. Describe the situation,
+        not the API you have in mind -- the shape of the fix is usually clearer once the constraint
+        is stated.
+    validations:
+      required: true
+
+  - type: textarea
+    id: game
+    attributes:
+      label: What game shape does this come from?
+      description: |
+        The ten reference games exist to pressure-test the trait, and each was added because it
+        exercised a corner none of the others did. If your proposal is motivated by a game shape
+        that none of them cover, describing it is the strongest possible argument.
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you tried
+      description: Workarounds you attempted, and where they fell short.
+    validations:
+      required: false

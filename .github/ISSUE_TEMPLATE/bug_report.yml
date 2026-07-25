@@ -1,0 +1,56 @@
+name: Bug report
+description: Something behaves incorrectly.
+labels: ['needs-triage']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A determinism bug is the highest-severity class here. If two replays of the same seed
+        diverge, say so explicitly -- that gets looked at first.
+
+  - type: dropdown
+    id: crate
+    attributes:
+      label: Crate
+      description: Which crate the problem is in. Pick the lowest layer you can reproduce it in.
+      options:
+        - turnbase (core)
+        - turnbase-bots
+        - turnbase-match
+        - turnbase-simulator
+        - turnbase-protocol
+        - turnbase-session
+        - turnbase-cli
+        - an example game
+        - not sure
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Crate version, or the commit SHA if building from git.
+      placeholder: '0.1.0'
+    validations:
+      required: true
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you expected, and what you got instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction
+      description: |
+        The seed and the exact action sequence, if you have them. The engine is deterministic, so
+        those two make the failure reproducible by construction -- it is by far the most useful
+        thing you can include. A failing test is even better.
+      render: rust
+    validations:
+      required: false

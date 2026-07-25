@@ -1,0 +1,3 @@
+# Every path falls to the maintainer. Kept deliberately coarse: a per-crate breakdown would be
+# fiction with a single maintainer, and stale ownership is worse than none.
+* @matanlurey
