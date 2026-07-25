@@ -1,15 +1,15 @@
 # Turnbase Architecture
 
-Turnbase is a headless, deterministic game engine framework for Rust. It provides
-an event-sourced-flavored, side-effect-free core that lets you define any turn-based
-game once and get simulation, AI training (MCTS/RL), and headless playtesting for free.
+Turnbase is a headless, deterministic game engine framework for Rust. It provides an
+event-sourced-flavored, side-effect-free core that lets you define any turn-based game once and get
+simulation, AI training (MCTS/RL), and headless playtesting for free.
 
-Core promise: **async-free, UI-free, pure computation**. `turnbase-core` has no
-networking, no rendering, no I/O, and no tokio/async-std in its dependency tree.
-Everything is a synchronous function from state + action to new state.
+Core promise: **async-free, UI-free, pure computation**. `turnbase-core` has no networking, no
+rendering, no I/O, and no tokio/async-std in its dependency tree. Everything is a synchronous
+function from state + action to new state.
 
-This document records the architecture decisions made for v1 and the reasoning
-behind them. Full research backing each decision lives in `.matan/research*.md`.
+This document records the architecture decisions made for v1 and the reasoning behind them. Full
+research backing each decision lives in `.matan/research*.md`.
 
 This document is about `turnbase-core`. The layer above it (sessions, hosts,
 headless/interactive/networked clients) is described in
@@ -17,8 +17,8 @@ headless/interactive/networked clients) is described in
 
 ## Non-goals for v1
 
-- Networking / multiplayer transport in the *core*. The session layer above it
-  handles hosting; the networked-transport shape is designed (not yet built) in
+- Networking / multiplayer transport in the _core_. The session layer above it handles hosting; the
+  networked-transport shape is designed (not yet built) in
   [`docs/design/sessions-and-transports.md`](docs/design/sessions-and-transports.md).
 - Rendering / UI of any kind
 - A scripting/DSL layer for effects (post-0.1 stretch — see "Future: scripting")
@@ -26,10 +26,10 @@ headless/interactive/networked clients) is described in
 
 ## Core trait shape
 
-No `G` + `Ctx` split like boardgame.io. Instead, one `State` type per game, and the
-engine asks questions of it through a trait — closer to OpenSpiel's `State` object
-than boardgame.io's reducer. Turn/phase bookkeeping is just fields on your own
-state; the engine never owns a parallel struct you have to keep in sync.
+No `G` + `Ctx` split like boardgame.io. Instead, one `State` type per game, and the engine asks
+questions of it through a trait — closer to OpenSpiel's `State` object than boardgame.io's reducer.
+Turn/phase bookkeeping is just fields on your own state; the engine never owns a parallel struct you
+have to keep in sync.
 
 ```rust
 pub trait Game {
@@ -147,68 +147,61 @@ pub trait Reversible: Game {
 }
 ```
 
-`apply_cloned()` (pure, `Clone`-based) is the default backtracking primitive: a
-provided helper that clones the state and calls `apply` on the copy, so search
-algorithms and property tests get copy-on-write semantics without any game
-author hand-writing reversal logic. Copy-make is simple, always correct, and —
-per chess-engine practice — fast enough for the overwhelming majority of games.
-`Reversible` (make/unmake) is the opt-in fast path for the few games where
-per-node cloning actually dominates the search budget.
+`apply_cloned()` (pure, `Clone`-based) is the default backtracking primitive: a provided helper that
+clones the state and calls `apply` on the copy, so search algorithms and property tests get
+copy-on-write semantics without any game author hand-writing reversal logic. Copy-make is simple,
+always correct, and — per chess-engine practice — fast enough for the overwhelming majority of
+games. `Reversible` (make/unmake) is the opt-in fast path for the few games where per-node cloning
+actually dominates the search budget.
 
 ### Why not event-sourcing or ECS for the core?
 
-Both were evaluated. Event-sourcing gives the best auditability/replay story but
-is heavyweight (external event store, aggregate design) for a library meant to
-scale down to tic-tac-toe. ECS (bevy_ecs) is excellent for effect-scheduling
-extensibility but its correctness depends on system ordering, which fights the
-determinism guarantee. The trait-based `apply` model (clone to backtrack, opt
-into `Reversible` only when search perf demands it) is simplest to author
-against, cheapest for AI search, and doesn't force simple games to pay for
-machinery they don't need. Event-sourcing-style logging (move log + snapshots)
-is still available as an *optional* layer on top, for replay/debugging, without
-being the foundational state representation.
+Both were evaluated. Event-sourcing gives the best auditability/replay story but is heavyweight
+(external event store, aggregate design) for a library meant to scale down to tic-tac-toe. ECS
+(bevy_ecs) is excellent for effect-scheduling extensibility but its correctness depends on system
+ordering, which fights the determinism guarantee. The trait-based `apply` model (clone to backtrack,
+opt into `Reversible` only when search perf demands it) is simplest to author against, cheapest for
+AI search, and doesn't force simple games to pay for machinery they don't need. Event-sourcing-style
+logging (move log + snapshots) is still available as an _optional_ layer on top, for
+replay/debugging, without being the foundational state representation.
 
 ## Turn structure: `active_players`, not `current_player`
 
-Research across Diplomacy (simultaneous secret orders), Star Wars Rebellion
-(asymmetric per-faction phases), Twilight Struggle (alternating with event
-interrupts), and Civ-style 4X (plan-then-resolve) found five distinct turn-order
-archetypes. `current_player: PlayerId` is not a universal concept — it's the
-1-element special case of a broader "who owes an action right now" set.
+Research across Diplomacy (simultaneous secret orders), Star Wars Rebellion (asymmetric per-faction
+phases), Twilight Struggle (alternating with event interrupts), and Civ-style 4X (plan-then-resolve)
+found five distinct turn-order archetypes. `current_player: PlayerId` is not a universal concept —
+it's the 1-element special case of a broader "who owes an action right now" set.
 
-Building on an ordered `active_players` set (`ActivePlayers`, not a `HashSet` —
-see "Determinism and RNG") from day one avoids bolting simultaneous-turn support
-on later:
+Building on an ordered `active_players` set (`ActivePlayers`, not a `HashSet` — see "Determinism and
+RNG") from day one avoids bolting simultaneous-turn support on later:
 
 - Strict alternating (chess, tic-tac-toe): `active_players` is always a singleton.
-- Simultaneous-secret (Diplomacy): `active_players` is everyone during the orders
-  phase, empty during adjudication.
+- Simultaneous-secret (Diplomacy): `active_players` is everyone during the orders phase, empty
+  during adjudication.
 - Asymmetric (Rebellion): `active_players` is faction-specific and phase-dependent.
-- Plan-then-resolve (Civ): `active_players` is everyone during planning, empty
-  during the deterministic resolution pass.
+- Plan-then-resolve (Civ): `active_players` is everyone during planning, empty during the
+  deterministic resolution pass.
 
 ### Built-in simultaneous-action buffering
 
-When more than one player is active, the engine buffers each player's submitted
-action per phase and only invokes a `resolve()` hook once all active players
-have submitted. Game authors don't reimplement "wait for everyone" bookkeeping
-per game. `resolve()` must consume the buffered actions in a deterministic
-order (players sorted by `PlayerId`, never hash order) — otherwise two replays
-of the same seed + inputs can diverge. This is why `active_players` is an
-ordered set and `private` is a `BTreeMap`, not their hashed equivalents.
+When more than one player is active, the engine buffers each player's submitted action per phase and
+only invokes a `resolve()` hook once all active players have submitted. Game authors don't
+reimplement "wait for everyone" bookkeeping per game. `resolve()` must consume the buffered actions
+in a deterministic order (players sorted by `PlayerId`, never hash order) — otherwise two replays of
+the same seed + inputs can diverge. This is why `active_players` is an ordered set and `private` is
+a `BTreeMap`, not their hashed equivalents.
 
-PettingZoo's design paper is the cautionary tale here: it argues true
-"everyone acts at once" (POSG) APIs are "not conceptually clear for games
-implemented in code" and make race conditions "a very easy mistake," and so
-sequentializes everything into an agent-environment cycle. This buffer-then-
-`resolve()` model is exactly that sequentialization — each player's submission
-is recorded independently and the environment reconciles conflicts once, in a
-fixed order — so simultaneity never becomes a source of order-dependent bugs.
+PettingZoo's design paper is the cautionary tale here: it argues true "everyone acts at once" (POSG)
+APIs are "not conceptually clear for games implemented in code" and make race conditions "a very
+easy mistake," and so sequentializes everything into an agent-environment cycle. This buffer-then-
+`resolve()` model is exactly that sequentialization — each player's submission is recorded
+independently and the environment reconciles conflicts once, in a fixed order — so simultaneity
+never becomes a source of order-dependent bugs.
 
 ## Hidden information: enforced public/private split
 
-boardgame.io's `playerView(state) -> redacted` is hand-written per game and easy
-to get wrong by omission. Turnbase requires games to shape their state as:
+boardgame.io's `playerView(state) -> redacted` is hand-written per game and easy to get wrong by
+omission. Turnbase requires games to shape their state as:
 
 ```rust
 pub struct State<P, Q> {
@@ -217,48 +210,43 @@ pub struct State<P, Q> {
 }
 ```
 
-The private map is a `BTreeMap` (ordered, for determinism) and is not `pub`:
-games reach it through accessors (`private(player)`, `private_mut(player)`)
-rather than the engine committing a concrete collection type to its public
-surface. Redaction becomes mechanical: a player's view is `(public,
-private.get(player))` — there's no field to forget to strip, because the view
-only *exposes* your own private data through `private(you)`, not the whole map.
-This mirrors OpenSpiel's "information set" formalism: two states differing only
-in *other* players' private data are the same information set to you. A `None`
-(spectator) viewer simply gets `public` with no private entry at all.
+The private map is a `BTreeMap` (ordered, for determinism) and is not `pub`: games reach it through
+accessors (`private(player)`, `private_mut(player)`) rather than the engine committing a concrete
+collection type to its public surface. Redaction becomes mechanical: a player's view is
+`(public, private.get(player))` — there's no field to forget to strip, because the view only
+_exposes_ your own private data through `private(you)`, not the whole map. This mirrors OpenSpiel's
+"information set" formalism: two states differing only in _other_ players' private data are the same
+information set to you. A `None` (spectator) viewer simply gets `public` with no private entry at
+all.
 
-Stratego: `public` = board positions + captured piece history, `private[player]`
-= piece rank assignments for that player's pieces.
+Stratego: `public` = board positions + captured piece history, `private[player]` = piece rank
+assignments for that player's pieces.
 
-Rebellion: `public` = revealed fleet positions + Empire bases, `private[Rebel]`
-= true fleet positions + planned orders.
+Rebellion: `public` = revealed fleet positions + Empire bases, `private[Rebel]` = true fleet
+positions + planned orders.
 
 ### When the default redaction rule is backwards: Hanabi
 
-The engine's `view_for(player)` default — public zone plus the viewer's own
-`private[player]` entry — covers the overwhelmingly common case (your own
-hand, hidden from everyone else). Hanabi inverts it: every player sees every
-*other* player's hand, but not their own. That's not a data-shape problem
-(`State<P, Q>` still works fine), it's a redaction-*rule* problem — the fixed
-engine default can't express "public plus everyone's private zone except
-yours."
+The engine's `view_for(player)` default — public zone plus the viewer's own `private[player]` entry
+— covers the overwhelmingly common case (your own hand, hidden from everyone else). Hanabi inverts
+it: every player sees every _other_ player's hand, but not their own. That's not a data-shape
+problem (`State<P, Q>` still works fine), it's a redaction-_rule_ problem — the fixed engine default
+can't express "public plus everyone's private zone except yours."
 
-`Game::view(state, Some(player))` is a required, game-defined method precisely
-so this isn't a special case bolted onto the engine: the engine still provides
-`view_for` as a convenience default that most games can just delegate to, but
-Hanabi (and similar inverted-visibility games, e.g. blind-auction variants where
-you see others' bids but not your own) implements `view` directly against
-`private` however its rules actually work. The `None` spectator case stays
-mechanical regardless — public projection only.
+`Game::view(state, Some(player))` is a required, game-defined method precisely so this isn't a
+special case bolted onto the engine: the engine still provides `view_for` as a convenience default
+that most games can just delegate to, but Hanabi (and similar inverted-visibility games, e.g.
+blind-auction variants where you see others' bids but not your own) implements `view` directly
+against `private` however its rules actually work. The `None` spectator case stays mechanical
+regardless — public projection only.
 
 ## Response windows: bounded objections, no stack required
 
-Pressure-testing against Coup (any player may challenge or block a declared
-action before it resolves) and XCOM-style overwatch (a move can trigger a
-reaction from a different, non-active player mid-resolution) initially looked
-like it needed Tier 3 machinery. It doesn't. "Declare an action, give every
-other player one chance to object, then resolve based on the outcome" is
-exactly the decision-point pattern already in this document — nothing new:
+Pressure-testing against Coup (any player may challenge or block a declared action before it
+resolves) and XCOM-style overwatch (a move can trigger a reaction from a different, non-active
+player mid-resolution) initially looked like it needed Tier 3 machinery. It doesn't. "Declare an
+action, give every other player one chance to object, then resolve based on the outcome" is exactly
+the decision-point pattern already in this document — nothing new:
 
 ```rust
 // Resolving one player's declared action inserts a decision point for others:
@@ -268,107 +256,93 @@ legal_actions(state, other_player) -> [Pass, Challenge, Block]
 // whoever's turn it actually is
 ```
 
-The distinction that matters: a **bounded** response window (ask once, resolve)
-is just more decision points using `active_players`/`legal_actions` as they
-already exist. What actually requires Tier 3 is MTG's *re-openable* LIFO stack
-— a response can itself be responded to, arbitrarily deep, with state-based
-action rechecking after every resolution. Coup and overwatch never re-open;
-they ask once and move on. Don't defer "can another player object" to Tier 3
-by default — only the unbounded, re-openable version needs it.
+The distinction that matters: a **bounded** response window (ask once, resolve) is just more
+decision points using `active_players`/`legal_actions` as they already exist. What actually requires
+Tier 3 is MTG's _re-openable_ LIFO stack — a response can itself be responded to, arbitrarily deep,
+with state-based action rechecking after every resolution. Coup and overwatch never re-open; they
+ask once and move on. Don't defer "can another player object" to Tier 3 by default — only the
+unbounded, re-openable version needs it.
 
 ## Move application
 
-`apply(&self, &mut State, PlayerId, Action)` is the one required mutator —
-in-place, and a pure function of state (the RNG lives *in* state, see below).
-The default backtracking primitive is `apply_cloned()`: clone the state, `apply`
-to the copy, hand back a `Result<State, Error>`. Copy-make is always correct
-and, per chess-engine practice, fast enough for the vast majority of turn-based
-games; no game author hand-rolls reversal just to get a pure API or drive search.
+`apply(&self, &mut State, PlayerId, Action)` is the one required mutator — in-place, and a pure
+function of state (the RNG lives _in_ state, see below). The default backtracking primitive is
+`apply_cloned()`: clone the state, `apply` to the copy, hand back a `Result<State, Error>`.
+Copy-make is always correct and, per chess-engine practice, fast enough for the vast majority of
+turn-based games; no game author hand-rolls reversal just to get a pure API or drive search.
 
-Games at chess-scale branching, where per-node cloning genuinely dominates the
-search budget, opt into the `Reversible` trait for make/unmake
-(`apply_undoable`/`undo`, mirroring OpenSpiel's `ApplyAction`/`UndoAction` and
-chess engines' make/unmake). This is deliberately *not* the default: OpenSpiel
-required `UndoAction` of every game and then had to remove it from several
-because correct reversal needed "extra nontrivial book-keeping," and a wrong
-`undo` corrupts search silently instead of crashing. Making it opt-in means that
-footgun is only ever one you reached for on purpose.
+Games at chess-scale branching, where per-node cloning genuinely dominates the search budget, opt
+into the `Reversible` trait for make/unmake (`apply_undoable`/`undo`, mirroring OpenSpiel's
+`ApplyAction`/`UndoAction` and chess engines' make/unmake). This is deliberately _not_ the default:
+OpenSpiel required `UndoAction` of every game and then had to remove it from several because correct
+reversal needed "extra nontrivial book-keeping," and a wrong `undo` corrupts search silently instead
+of crashing. Making it opt-in means that footgun is only ever one you reached for on purpose.
 
 ## Determinism and RNG
 
-The RNG lives *inside* `State` as a serializable, counter-based generator (a
-concrete `Prng` newtype the engine provides — think PCG/philox: a seed plus a
-64-bit counter, not an opaque `Box<dyn RngCore>`). Three properties fall out of
-this one decision:
+The RNG lives _inside_ `State` as a serializable, counter-based generator (a concrete `Prng` newtype
+the engine provides — think PCG/philox: a seed plus a 64-bit counter, not an opaque
+`Box<dyn RngCore>`). Three properties fall out of this one decision:
 
-- **Snapshot + resume is O(1).** Serializing `State` serializes the RNG
-  position with it, so a match resumes from a single saved state — no replaying
-  the entire action log from turn 1 (which grows without bound over a long 4X
-  game). boardgame.io keeps its PRNG counter in state for exactly this reason;
-  a "never serialize the RNG" plan can't resume from a snapshot at all.
-- **`undo` can rewind the random stream.** Because the generator's position is
-  part of state, a `Reversible` game's `UndoRecord` snapshots that position
-  before a move and `undo` writes it back, so re-exploring an undone branch
-  resamples *identically* — closing the gap a side-channel `&mut dyn RngCore`
-  would leave open. Automatic on the clone path; a one-word copy the record
-  must carry on the make/unmake path (see the `Reversible` invariant).
-- **Algorithm-swap stays cheap.** Keeping `apply` free of an `&mut dyn RngCore`
-  parameter (games pull randomness from `state`'s `Prng`) lets the concrete
-  generator change under the hood without rippling through every call site —
-  the same benefit the trait object gave, via a concrete wrapper type instead.
+- **Snapshot + resume is O(1).** Serializing `State` serializes the RNG position with it, so a match
+  resumes from a single saved state — no replaying the entire action log from turn 1 (which grows
+  without bound over a long 4X game). boardgame.io keeps its PRNG counter in state for exactly this
+  reason; a "never serialize the RNG" plan can't resume from a snapshot at all.
+- **`undo` can rewind the random stream.** Because the generator's position is part of state, a
+  `Reversible` game's `UndoRecord` snapshots that position before a move and `undo` writes it back,
+  so re-exploring an undone branch resamples _identically_ — closing the gap a side-channel
+  `&mut dyn RngCore` would leave open. Automatic on the clone path; a one-word copy the record must
+  carry on the make/unmake path (see the `Reversible` invariant).
+- **Algorithm-swap stays cheap.** Keeping `apply` free of an `&mut dyn RngCore` parameter (games
+  pull randomness from `state`'s `Prng`) lets the concrete generator change under the hood without
+  rippling through every call site — the same benefit the trait object gave, via a concrete wrapper
+  type instead.
 
-Concretely, `Prng` must be a fixed-algorithm, integer-only generator whose
-*entire* reproducible position is a small `Copy` value the engine can read and
-restore — a counter-based RNG (Philox/Threefry are literally stateless functions
-of `(key, counter)`), a seekable LCG-family generator (PCG exposes jump-ahead,
-and jumping backwards is just jumping forward around the cycle), or ChaCha
-(whose `get_word_pos`/`set_word_pos` expose a 128-bit position over its internal
-block buffer). It is deliberately *not* a `Box<dyn RngCore>`: a trait object
-erases the concrete state, so it can be neither snapshotted into an `UndoRecord`
-nor serialized portably. No float-based generator either, for the same
-cross-platform reason std's randomized `HashMap` hasher is banned here. This is
-standard rollback-netcode practice — GGPO-style engines snapshot the RNG
-position as part of frame state and restore it on rewind — and OpenSpiel
-likewise serializes RNG state for its implicitly-stochastic games.
+Concretely, `Prng` must be a fixed-algorithm, integer-only generator whose _entire_ reproducible
+position is a small `Copy` value the engine can read and restore — a counter-based RNG
+(Philox/Threefry are literally stateless functions of `(key, counter)`), a seekable LCG-family
+generator (PCG exposes jump-ahead, and jumping backwards is just jumping forward around the cycle),
+or ChaCha (whose `get_word_pos`/`set_word_pos` expose a 128-bit position over its internal block
+buffer). It is deliberately _not_ a `Box<dyn RngCore>`: a trait object erases the concrete state, so
+it can be neither snapshotted into an `UndoRecord` nor serialized portably. No float-based generator
+either, for the same cross-platform reason std's randomized `HashMap` hasher is banned here. This is
+standard rollback-netcode practice — GGPO-style engines snapshot the RNG position as part of frame
+state and restore it on rewind — and OpenSpiel likewise serializes RNG state for its
+implicitly-stochastic games.
 
-Determinism also depends on *iteration order*: `active_players` is an ordered
-`ActivePlayers` set and `private` is a `BTreeMap`, never `HashSet`/`HashMap`.
-Rust's std hashers randomize iteration order per process; Bevy had to abandon
-std `HashMap` for a fixed hasher for exactly this reason. Any game logic that
-consumes RNG or resolves buffered actions while walking a hashed collection
-would desync two replays of the same seed. Ordered collections make that class
-of bug unrepresentable rather than merely discouraged.
+Determinism also depends on _iteration order_: `active_players` is an ordered `ActivePlayers` set
+and `private` is a `BTreeMap`, never `HashSet`/`HashMap`. Rust's std hashers randomize iteration
+order per process; Bevy had to abandon std `HashMap` for a fixed hasher for exactly this reason. Any
+game logic that consumes RNG or resolves buffered actions while walking a hashed collection would
+desync two replays of the same seed. Ordered collections make that class of bug unrepresentable
+rather than merely discouraged.
 
 ## Randomness, part 2: explicit chance nodes for committed outcomes
 
-Pressure-testing against Battle Line, Star Wars Rebellion, Root, and Slay the
-Spire found a remaining gap: even with the RNG counter living in state, there's
-nowhere natural to put an outcome that's secret from *everyone* (a shuffled
-deck's order isn't `public`, and it isn't any one player's `private[PlayerId]`
-either), and while `undo` now rewinds the RNG stream cleanly, a value
-*resampled* on a fresh re-exploration still isn't the same committed fact that
-players may have already observed and reasoned about.
+Pressure-testing against Battle Line, Star Wars Rebellion, Root, and Slay the Spire found a
+remaining gap: even with the RNG counter living in state, there's nowhere natural to put an outcome
+that's secret from _everyone_ (a shuffled deck's order isn't `public`, and it isn't any one player's
+`private[PlayerId]` either), and while `undo` now rewinds the RNG stream cleanly, a value
+_resampled_ on a fresh re-exploration still isn't the same committed fact that players may have
+already observed and reasoned about.
 
 The fix is a hybrid, not a wholesale replacement:
 
-- **Cheap, uncommitted rolls stay implicit.** Combat dice, random enemy
-  intent, anything no player commits a decision against keeps pulling from
-  `state`'s `Prng` inside `apply()`. Resampling such a roll on a fresh
-  (non-`undo`) re-exploration is acceptable — but it is *not* free of
-  consequence, and calling it "harmless" earlier was an overstatement. Naive
-  resampling across determinizations is the source of the classic
-  strategy-fusion and non-locality biases in imperfect-information MCTS (Frank
-  & Basin; Cowling et al.): the search fools itself by assuming it will "find
-  out" hidden values it actually cannot distinguish. Rule of thumb: if a
-  search's *decisions* depend on the outcome, model it as a chance node
-  (below); reserve implicit rolls for outcomes no strategy branches on.
-- **Outcomes that become visible/committed state go through explicit chance
-  nodes instead.** A reserved `Chance` pseudo-player appears in
-  `active_players()` when the game needs to reveal a card, deal a hand, or
-  otherwise fix an outcome that players will observe and reason about later.
-  `legal_actions(state, Chance)` returns the possible outcomes (e.g. "draw the
-  3\u2665"); `apply`/`undo` treat a chance move exactly like a player move \u2014
-  it becomes real, undo-able state instead of a side channel.
+- **Cheap, uncommitted rolls stay implicit.** Combat dice, random enemy intent, anything no player
+  commits a decision against keeps pulling from `state`'s `Prng` inside `apply()`. Resampling such a
+  roll on a fresh (non-`undo`) re-exploration is acceptable — but it is _not_ free of consequence,
+  and calling it "harmless" earlier was an overstatement. Naive resampling across determinizations
+  is the source of the classic strategy-fusion and non-locality biases in imperfect-information MCTS
+  (Frank & Basin; Cowling et al.): the search fools itself by assuming it will "find out" hidden
+  values it actually cannot distinguish. Rule of thumb: if a search's _decisions_ depend on the
+  outcome, model it as a chance node (below); reserve implicit rolls for outcomes no strategy
+  branches on.
+- **Outcomes that become visible/committed state go through explicit chance nodes instead.** A
+  reserved `Chance` pseudo-player appears in `active_players()` when the game needs to reveal a
+  card, deal a hand, or otherwise fix an outcome that players will observe and reason about later.
+  `legal_actions(state, Chance)` returns the possible outcomes (e.g. "draw the 3\u2665");
+  `apply`/`undo` treat a chance move exactly like a player move \u2014 it becomes real, undo-able
+  state instead of a side channel.
 
 ```rust
 // A deck draw becomes a real, undo-able action instead of an RNG side effect:
@@ -378,26 +352,24 @@ apply(state, Chance, Card::Ace)                    // consumes the top card
 undo(state, record)                                // Reversible games: puts Card::Ace back
 ```
 
-No third zone is needed on `State<P, Q>` for this: deck order is simply
-`Chance`-owned data living wherever is convenient in the game's own state
-(often `public`, since its *contents* aren't secret once you accept "nobody
-has looked yet" ≠ "hidden from a specific viewer") — a convention, not a new
-type. The `Chance` pseudo-player is the only thing new here, and it reuses
-every existing mechanism (`active_players`, `legal_actions`, `apply`, `undo`).
+No third zone is needed on `State<P, Q>` for this: deck order is simply `Chance`-owned data living
+wherever is convenient in the game's own state (often `public`, since its _contents_ aren't secret
+once you accept "nobody has looked yet" ≠ "hidden from a specific viewer") — a convention, not a new
+type. The `Chance` pseudo-player is the only thing new here, and it reuses every existing mechanism
+(`active_players`, `legal_actions`, `apply`, `undo`).
 
 ## Triggered effects: Tier 2 now, Tier 3 later
 
 Trigger/stack research found a clean three-tier ladder:
 
 1. **Tier 1** — observer pattern, immediate dispatch (Slay the Spire relics).
-2. **Tier 2** — event queue, enum-based events/triggers, ordered by
-   controller/summon-order, no player responses (Hearthstone).
-3. **Tier 3** — LIFO priority stack, priority-passing loop, state-based-action
-   rechecking, response windows (MTG).
+2. **Tier 2** — event queue, enum-based events/triggers, ordered by controller/summon-order, no
+   player responses (Hearthstone).
+3. **Tier 3** — LIFO priority stack, priority-passing loop, state-based-action rechecking, response
+   windows (MTG).
 
-The jump from Tier 2 to Tier 3 is "surgical, not architectural" *if* Tier 2 is
-built with triggers as queued enum values rather than immediately-invoked
-callbacks. Turnbase ships Tier 2 in v1:
+The jump from Tier 2 to Tier 3 is "surgical, not architectural" _if_ Tier 2 is built with triggers
+as queued enum values rather than immediately-invoked callbacks. Turnbase ships Tier 2 in v1:
 
 ```rust
 pub enum Effect { /* game-defined */ }
@@ -408,83 +380,71 @@ pub trait Trigger {
 }
 ```
 
-Effects are queued, never invoked synchronously inline, so a future Tier 3 adds
-a priority-passing loop and an SBA-recheck pass around the same queue rather
-than replacing it.
+Effects are queued, never invoked synchronously inline, so a future Tier 3 adds a priority-passing
+loop and an SBA-recheck pass around the same queue rather than replacing it.
 
 ## Action spaces: decision points, not flat turn enumeration
 
-Diplomacy-scale games (34 units, ~5 orders each) don't enumerate the full turn
-as a single flat action — that's combinatorially absurd. `legal_actions()` and
-`apply()` are decision-point primitives: they answer "what can I do right now,"
-and a full turn is a sequence of `apply()` calls until `active_players()`
-changes. Tic-tac-toe's turns just happen to be length 1. This means the same
-trait scales from tic-tac-toe to Star Wars Rebellion without a second, more
-complex trait for "big" games.
+Diplomacy-scale games (34 units, ~5 orders each) don't enumerate the full turn as a single flat
+action — that's combinatorially absurd. `legal_actions()` and `apply()` are decision-point
+primitives: they answer "what can I do right now," and a full turn is a sequence of `apply()` calls
+until `active_players()` changes. Tic-tac-toe's turns just happen to be length 1. This means the
+same trait scales from tic-tac-toe to Star Wars Rebellion without a second, more complex trait for
+"big" games.
 
-The decision-point sequence within a phase is not required to be a fixed,
-known-in-advance count either. Poker's betting rounds and Bridge's auction
-re-visit the same player repeatedly and end only when a state-dependent
-condition holds (all bets matched or folded; three consecutive passes) — not
-after N steps. This falls out for free from `active_players`/`legal_actions`
-being recomputed fresh after every `apply()` call rather than following a
-pre-planned decomposition; it's called out here only because every example
-above (Diplomacy: unit, then order) happens to have a fixed step count and
-could otherwise be mistaken for a requirement.
+The decision-point sequence within a phase is not required to be a fixed, known-in-advance count
+either. Poker's betting rounds and Bridge's auction re-visit the same player repeatedly and end only
+when a state-dependent condition holds (all bets matched or folded; three consecutive passes) — not
+after N steps. This falls out for free from `active_players`/`legal_actions` being recomputed fresh
+after every `apply()` call rather than following a pre-planned decomposition; it's called out here
+only because every example above (Diplomacy: unit, then order) happens to have a fixed step count
+and could otherwise be mistaken for a requirement.
 
 ### Decision points with large branching factors
 
-Decomposition kills the *cross-product* explosion across a whole turn; it does
-not guarantee every individual decision point is small. A decision point
-returning a few thousand concrete actions is fine — `Vec<Action>` allocation
-at that size is noise. Two specific shapes still need explicit handling:
+Decomposition kills the _cross-product_ explosion across a whole turn; it does not guarantee every
+individual decision point is small. A decision point returning a few thousand concrete actions is
+fine — `Vec<Action>` allocation at that size is noise. Two specific shapes still need explicit
+handling:
 
-1. **Combinatorial within one decision point** ("discard any subset of your
-   15-card hand" is `2^15` subsets if modeled as one choice). Fix: decompose
-   further, the same way a full turn gets decomposed — one binary
-   include/exclude decision per card, 15 steps instead of one `2^15`-sized
+1. **Combinatorial within one decision point** ("discard any subset of your 15-card hand" is `2^15`
+   subsets if modeled as one choice). Fix: decompose further, the same way a full turn gets
+   decomposed — one binary include/exclude decision per card, 15 steps instead of one `2^15`-sized
    step.
 
-2. **Large-but-structured spaces that resist decomposition** (targeting any
-   tile on a 500-tile map). Two escape hatches, either or both:
-   - *Hierarchical decomposition*: add a level — choose region (~20), then
-     tile within region (~25) — turning one 500-way choice into two ~20-25-way
-     choices.
-   - *Decouple enumerate from validate*: `Game::is_legal` (see trait above)
-     lets a game skip materializing the full legal set entirely. Exhaustive
-     search (minimax/MCTS) needs `legal_actions()` to be complete; an RL
-     policy network or a human UI only needs to validate the one action it
-     already picked, via `is_legal()`. A game can provide a cheap `is_legal`
-     without a faithful `legal_actions()` and simply document that
-     exhaustive-search bots aren't supported at that specific decision point
-     — the same way no one minimaxes over "which of 500 tiles to bombard" in
-     practice either.
+2. **Large-but-structured spaces that resist decomposition** (targeting any tile on a 500-tile map).
+   Two escape hatches, either or both:
+   - _Hierarchical decomposition_: add a level — choose region (~20), then tile within region (~25)
+     — turning one 500-way choice into two ~20-25-way choices.
+   - _Decouple enumerate from validate_: `Game::is_legal` (see trait above) lets a game skip
+     materializing the full legal set entirely. Exhaustive search (minimax/MCTS) needs
+     `legal_actions()` to be complete; an RL policy network or a human UI only needs to validate the
+     one action it already picked, via `is_legal()`. A game can provide a cheap `is_legal` without a
+     faithful `legal_actions()` and simply document that exhaustive-search bots aren't supported at
+     that specific decision point — the same way no one minimaxes over "which of 500 tiles to
+     bombard" in practice either.
 
 ## Multi-phase "run" structures (composition, not a new trait)
 
-Slay the Spire's map → combat → shop → rest loop (and similarly, tie-fighter-rl's
-title → boon → map → briefing → combat → debrief) isn't one flat turn loop —
-it's a phase machine where one phase (combat) is itself a full mini-game with
-its own turns. This is exactly the friction pattern found scouting
-tie-fighter-rl: a hardcoded `Phase` enum touched in `sync()`, `render()`, and
+Slay the Spire's map → combat → shop → rest loop (and similarly, tie-fighter-rl's title → boon → map
+→ briefing → combat → debrief) isn't one flat turn loop — it's a phase machine where one phase
+(combat) is itself a full mini-game with its own turns. This is exactly the friction pattern found
+scouting tie-fighter-rl: a hardcoded `Phase` enum touched in `sync()`, `render()`, and
 `handle_event()` every time a phase is added.
 
-For v1, this is **documented convention, not a formal trait**: give the
-top-level `State` a phase tag plus an inner state field per complex phase
-(e.g. `combat: Option<CombatState>`), and have the top-level `Game` impl's
-`active_players`/`legal_actions`/`apply`/`undo` dispatch into the inner phase's
-logic (which can itself be a complete, separate `Game` implementation) when
-the phase tag matches. This keeps combat-specific code from bloating run-level
-code without inventing sub-game-hosting machinery before we've built a real
-game that needs it. Revisit formalizing a `SubGame`-style helper once a
-Slay-the-Spire-shaped reference game is actually attempted.
+For v1, this is **documented convention, not a formal trait**: give the top-level `State` a phase
+tag plus an inner state field per complex phase (e.g. `combat: Option<CombatState>`), and have the
+top-level `Game` impl's `active_players`/`legal_actions`/`apply`/`undo` dispatch into the inner
+phase's logic (which can itself be a complete, separate `Game` implementation) when the phase tag
+matches. This keeps combat-specific code from bloating run-level code without inventing
+sub-game-hosting machinery before we've built a real game that needs it. Revisit formalizing a
+`SubGame`-style helper once a Slay-the-Spire-shaped reference game is actually attempted.
 
 ## Faction asymmetry: enum-of-enums for Action
 
-Root-style games give every seat a genuinely different rule system (different
-action sets, win conditions, sometimes different turn structure entirely).
-The recommended convention is a flat `Action` enum with one variant per
-faction, wrapping that faction's own action enum:
+Root-style games give every seat a genuinely different rule system (different action sets, win
+conditions, sometimes different turn structure entirely). The recommended convention is a flat
+`Action` enum with one variant per faction, wrapping that faction's own action enum:
 
 ```rust
 enum Action {
@@ -495,20 +455,18 @@ enum Action {
 }
 ```
 
-`legal_actions` for a given player dispatches to that faction's own
-enumeration logic and wraps the result. This is ordinary Rust enum
-composition, not new trait machinery — called out here only because deep
-asymmetry makes it tempting to reach for something fancier than necessary.
+`legal_actions` for a given player dispatches to that faction's own enumeration logic and wraps the
+result. This is ordinary Rust enum composition, not new trait machinery — called out here only
+because deep asymmetry makes it tempting to reach for something fancier than necessary.
 
 ## Scripted / automated participants
 
-Blackjack's dealer, Slay the Spire's enemies, and Root's optional automa
-factions all validated the same pattern with no changes needed: they're just
-an entry in `active_players()` whose `legal_actions()` happens to always
-return exactly one algorithmically-computed action (or a small fixed set,
-for a scripted enemy choosing among a few intents). No bot, no special
-"NPC" concept in the trait — "this seat isn't really a decision" falls out
-for free from `legal_actions` returning a singleton.
+Blackjack's dealer, Slay the Spire's enemies, and Root's optional automa factions all validated the
+same pattern with no changes needed: they're just an entry in `active_players()` whose
+`legal_actions()` happens to always return exactly one algorithmically-computed action (or a small
+fixed set, for a scripted enemy choosing among a few intents). No bot, no special "NPC" concept in
+the trait — "this seat isn't really a decision" falls out for free from `legal_actions` returning a
+singleton.
 
 ## Workspace layout
 
@@ -527,80 +485,70 @@ turnbase/
   examples/                   # reference games (publish = false)
 ```
 
-The crates layer strictly: `core` has no opinions; `bots` (search) and
-`match` (turn-loop orchestration) build on it; `simulator` (rendering) builds
-on `match`; `protocol` (wire types, no `turnbase` dependency) and `session`
-(the host/persistence port) build alongside. Nothing on the headless path
-links the terminal UI. The layer above the core is documented in
+The crates layer strictly: `core` has no opinions; `bots` (search) and `match` (turn-loop
+orchestration) build on it; `simulator` (rendering) builds on `match`; `protocol` (wire types, no
+`turnbase` dependency) and `session` (the host/persistence port) build alongside. Nothing on the
+headless path links the terminal UI. The layer above the core is documented in
 [`docs/design/sessions-and-transports.md`](docs/design/sessions-and-transports.md).
 
-Matches the `rg` house style: workspace-level lints (`clippy::all`/`pedantic`/
-`nursery` deny), `resolver = "2"`, shared `[workspace.package]` metadata,
-custom error enums instead of thiserror/anyhow, `mod tests` inline per file,
-no unsafe, no async.
+Matches the `rg` house style: workspace-level lints (`clippy::all`/`pedantic`/ `nursery` deny),
+`resolver = "2"`, shared `[workspace.package]` metadata, custom error enums instead of
+thiserror/anyhow, `mod tests` inline per file, no unsafe, no async.
 
 ## Composability: optional helper layers, not a flow framework
 
-Building five structurally different reference games (tic-tac-toe, high card,
-rock-paper-scissors, minion battle, and 2-4 player Coup) required no changes to
-the `Game` trait. Even Coup's nested challenge/block response windows fell out
-of `active_players`/`legal_actions` plus a `pending`/`resume` struct on the
-game's own state — no engine machinery. The minimal core is the right bet
-(OpenSpiel's philosophy), and the flow-framework alternative (boardgame.io's
-phases/turns/stages) carries a documented complexity tax: phases were "a
-frequent source of confusion" in its own words, with recurring edge-case bugs
-(silent `endTurn` discards, stage/turn interaction surprises). Turnbase
-deliberately does not adopt one — `active_players` computed from your own state
-already gives flow control without a framework.
+Building five structurally different reference games (tic-tac-toe, high card, rock-paper-scissors,
+minion battle, and 2-4 player Coup) required no changes to the `Game` trait. Even Coup's nested
+challenge/block response windows fell out of `active_players`/`legal_actions` plus a
+`pending`/`resume` struct on the game's own state — no engine machinery. The minimal core is the
+right bet (OpenSpiel's philosophy), and the flow-framework alternative (boardgame.io's
+phases/turns/stages) carries a documented complexity tax: phases were "a frequent source of
+confusion" in its own words, with recurring edge-case bugs (silent `endTurn` discards, stage/turn
+interaction surprises). Turnbase deliberately does not adopt one — `active_players` computed from
+your own state already gives flow control without a framework.
 
-Where common shapes recur, the answer is optional, layered helpers a game opts
-into, never core trait changes. The Tier-2 `EffectSystem` is the first such
-layer. The others, in priority order:
+Where common shapes recur, the answer is optional, layered helpers a game opts into, never core
+trait changes. The Tier-2 `EffectSystem` is the first such layer. The others, in priority order:
 
-- **Zones (`Pile<T>`)**: an ordered pile (deck, hand, discard) with a
-  deterministic `shuffle(&mut Prng)`, `draw`/`put`/`insert`/`remove`, and — with
-  `PartialEq` — `contains`/`position`/`remove_item`. Every card game needs
-  deck/hand management, and the shuffle/draw/redraw code is the most error-prone
-  thing to hand-roll (a card-conservation invariant test caught a transient bug
-  during Coup's development). This mirrors reusable toolkits like `gametools`
-  and Veggerby.Boards' deck-building zones. high card and Coup use it for their
-  decks.
+- **Zones (`Pile<T>`)**: an ordered pile (deck, hand, discard) with a deterministic
+  `shuffle(&mut Prng)`, `draw`/`put`/`insert`/`remove`, and — with `PartialEq` —
+  `contains`/`position`/`remove_item`. Every card game needs deck/hand management, and the
+  shuffle/draw/redraw code is the most error-prone thing to hand-roll (a card-conservation invariant
+  test caught a transient bug during Coup's development). This mirrors reusable toolkits like
+  `gametools` and Veggerby.Boards' deck-building zones. high card and Coup use it for their decks.
 
-- **Priority windows (the deferred Tier-3)**: Coup's "go around the living
-  seats, each may pass or object, first objection resolves" queue is the
-  re-openable MTG-style priority stack in miniature. A reusable priority-passing
-  helper serves both bounded response windows and the eventual Tier-3 stack.
+- **Priority windows (the deferred Tier-3)**: Coup's "go around the living seats, each may pass or
+  object, first objection resolves" queue is the re-openable MTG-style priority stack in miniature.
+  A reusable priority-passing helper serves both bounded response windows and the eventual Tier-3
+  stack.
 
-- **Structural decomposition (convention, not code)**: following RLCard's
-  Dealer/Round/Judger split, games read clearest decomposed into setup and
-  chance (the deck), flow (`active_players` from a phase tag), and scoring
-  (`reward`). This is guidance, not machinery.
+- **Structural decomposition (convention, not code)**: following RLCard's Dealer/Round/Judger split,
+  games read clearest decomposed into setup and chance (the deck), flow (`active_players` from a
+  phase tag), and scoring (`reward`). This is guidance, not machinery.
 
-The principle: keep the core minimal and deterministic; ship composability as
-opt-in components *under* the game — the way a game toolkit ships piles, dice,
-and resources — not as a flow framework *over* it.
+The principle: keep the core minimal and deterministic; ship composability as opt-in components
+_under_ the game — the way a game toolkit ships piles, dice, and resources — not as a flow framework
+_over_ it.
 
 ## Future: scripting / effect-authoring DSL
 
-Deferred until 2-3 real games exist on the trait-based core and gaps are
-concrete rather than speculated. Leading candidates, kept viable by design
-(nothing in the core precludes them):
+Deferred until 2-3 real games exist on the trait-based core and gaps are concrete rather than
+speculated. Leading candidates, kept viable by design (nothing in the core precludes them):
 
-- **Data-driven effect vocabulary**: small set of composable verb enums
-  (`DealDamage`, `Draw`, `ApplyStatus`) deserialized from YAML/JSON — the
-  Hearthstone/Slay-the-Spire modding pattern. No embedded language needed.
-- **Rhai**: pure-Rust, deterministic-friendly (no external float/RNG surprises),
-  sandboxable, easiest to embed without FFI risk.
-- **Lua (mlua)**: bigger ecosystem, but floating-point non-determinism across
-  platforms is a real risk for replay-safety and needs mitigation.
+- **Data-driven effect vocabulary**: small set of composable verb enums (`DealDamage`, `Draw`,
+  `ApplyStatus`) deserialized from YAML/JSON — the Hearthstone/Slay-the-Spire modding pattern. No
+  embedded language needed.
+- **Rhai**: pure-Rust, deterministic-friendly (no external float/RNG surprises), sandboxable,
+  easiest to embed without FFI risk.
+- **Lua (mlua)**: bigger ecosystem, but floating-point non-determinism across platforms is a real
+  risk for replay-safety and needs mitigation.
 
-The Tier-2 `Effect`/`Trigger` enums are the natural boundary where any of these
-would plug in later — effects are already data, so a script's job is just to
-*produce* `Effect` values rather than mutate state directly.
+The Tier-2 `Effect`/`Trigger` enums are the natural boundary where any of these would plug in later
+— effects are already data, so a script's job is just to _produce_ `Effect` values rather than
+mutate state directly.
 
 ## Reference game: Tic-Tac-Toe
 
-Chosen as the first implementation to validate the trait design before
-committing to it further: simplest possible `active_players` (always a
-singleton), simplest `legal_actions` (9 cells), no hidden information, no RNG,
-no triggers. See `examples/tic_tac_toe.rs`.
+Chosen as the first implementation to validate the trait design before committing to it further:
+simplest possible `active_players` (always a singleton), simplest `legal_actions` (9 cells), no
+hidden information, no RNG, no triggers. See `examples/tic_tac_toe.rs`.
