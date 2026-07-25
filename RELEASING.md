@@ -93,10 +93,39 @@ fails without them.
 
 1. **crates.io Trusted Publishing**, per crate. On crates.io go to each crate's Settings -> Trusted
    Publishing and add a GitHub publisher: owner `crates-lurey-io`, repository `turnbase`, workflow
-   `release-plz.yml`, environment `release`. Needed for all seven publishable crates. A crate that
-   does not exist on crates.io yet has to be published once manually (`cargo publish`) before it has
-   a settings page; `turnbase` and `turnbase-bots` are already reserved at `0.0.0-reserved`.
-2. **The `release` GitHub environment**, with a branch policy restricting it to `main`.
+   `release-plz.yml`, environment `release`.
+
+   **Per crate is literal.** The token minted via OIDC is scoped to exactly the crates carrying a
+   matching config, so a workspace with one crate configured publishes that crate and then fails
+   with `403 Forbidden: The provided access token is not valid for crate <next>`. All seven need
+   their own config.
+
+   The workflow filename must match exactly, or crates.io rejects the exchange with
+   `does not match the workflow filename ... in the JWT`. Both errors only surface at publish time.
+
+   **Chicken-and-egg:** a Trusted Publishing config can only be created for a crate that already
+   exists on crates.io (RFC 3691), so a brand-new crate has no settings page. Reserve the name first
+   with a placeholder publish, then configure. All seven names are already reserved; the placeholder
+   shape is a standalone crate outside this workspace with `version = "0.0.0-reserved"` and a
+   one-line `src/lib.rs` reading `//! Name reservation placeholder for <name>. Not yet implemented.`
+
+2. **The `release` GitHub environment**, with a branch policy restricting it to `main`. Already
+   created.
+
+3. **Approve the first Release PR's workflow runs.** GitHub gates workflow runs on PRs from
+   first-time contributors, and `github-actions[bot]` counts as one until it has a merged PR. Until
+   then every Release PR shows `action_required` and stays `BLOCKED` on the missing `required`
+   check. Approve from the Actions tab, or:
+
+   ```sh
+   gh run list --branch <release-plz-branch> --json databaseId,conclusion \
+     --jq '.[] | select(.conclusion=="action_required") | .databaseId' \
+     | xargs -I{} gh api -X POST repos/crates-lurey-io/turnbase/actions/runs/{}/approve
+   ```
+
+   Approve runs for one commit at a time. CI's concurrency group has `cancel-in-progress: true`, so
+   approving runs for two commits at once makes the newer cancel the older, and `required` treats a
+   cancelled run as failure.
 
 There is deliberately no `CARGO_REGISTRY_TOKEN` secret: Trusted Publishing exchanges the workflow's
 OIDC token for a short-lived one at publish time.
