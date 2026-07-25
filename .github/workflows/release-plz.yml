@@ -1,0 +1,129 @@
+name: Release-plz
+
+# Automated release flow (see RELEASING.md):
+#   - release-plz-release: on every push to main, publishes any crate whose Cargo.toml version is
+#     ahead of crates.io (i.e. right after the Release PR merges), tags it, and creates the GitHub
+#     release. A no-op when nothing is unpublished.
+#   - release-plz-pr: on every push to main, opens/updates a standing Release PR bumping each
+#     changed crate's version and per-crate CHANGELOG.md.
+#
+# Nobody bumps a version or pushes a tag by hand: review PRs, then merge the Release PR.
+
+on:
+  push:
+    branches: [main]
+  # Lets an operator re-trigger from the Actions tab, e.g. to recompute the Release PR branch
+  # without an incidental push to main.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # Publishes bumped crates once the Release PR is merged. That merge is the single human gate.
+  release-plz-release:
+    name: Release-plz release
+    runs-on: ubuntu-latest
+    # Never two publish attempts at once; a concurrent double-publish surfaces confusing
+    # "already exists" errors even though release-plz skips already-published versions.
+    concurrency:
+      group: release-plz-release-${{ github.ref }}
+      cancel-in-progress: false
+    environment: release
+    permissions:
+      contents: write
+      # Trusted Publishing: release-plz exchanges this OIDC token for a short-lived crates.io
+      # token itself, so there is no CARGO_REGISTRY_TOKEN secret. Must be configured per crate on
+      # crates.io (Settings -> Trusted Publishing) before the first release.
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: release-plz/action@v0.5
+        with:
+          command: release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Maintains the standing Release PR. Runs cargo-semver-checks (release-plz.toml semver_check) so
+  # each proposed bump is adequate for the API change actually detected.
+  release-plz-pr:
+    name: Release-plz PR
+    runs-on: ubuntu-latest
+    # Always wait for the publish job from this same push. Without the ordering, the very push
+    # that merges the Release PR makes both jobs start from the same pre-publish state, and this
+    # job can race ahead and re-propose the version the release job is mid-publish on, producing a
+    # duplicate changelog entry. Known release-plz footgun; see release-plz#1542.
+    needs: release-plz-release
+    concurrency:
+      group: release-plz-pr-${{ github.ref }}
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: tools/package-lock.json
+      - name: Run release-plz
+        id: release-plz
+        uses: release-plz/action@v0.5
+        with:
+          command: release-pr
+        env:
+          # GitHub's loop-prevention only stops `push`-triggered workflows from a
+          # GITHUB_TOKEN-authored push, which is why this job does not re-trigger itself. It does
+          # NOT apply to ci.yml, which is `pull_request`-triggered and so DOES run against the
+          # Release PR -- that is what catches the formatting problem the next step fixes.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # release-plz's cliff-driven CHANGELOG.md generation does not reliably land on prettier's and
+      # markdownlint's blank-line normalization: its header-preserving splice concatenates the
+      # rendered entry with the old file's body verbatim, adding newlines on top of whatever
+      # cliff.toml's postprocessors produced. Rather than chase that newline count across
+      # release-plz versions, just run the same formatters CI enforces and push a fixup commit.
+      #
+      # `prs_created` is misleadingly named: the action sets it whenever a release PR exists after
+      # the run (created OR updated), which is the common case once the standing PR exists.
+      - name: Fix formatting on the Release PR
+        if: steps.release-plz.outputs.prs_created == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ fromJSON(steps.release-plz.outputs.pr).number }}
+        run: |
+          set -e
+          gh pr checkout "$PR_NUMBER"
+          npm ci --prefix tools
+          # Loop to a fixed point rather than running each formatter once: prettier is not always
+          # idempotent in a single --write pass over release-plz's verbatim-spliced commit-body
+          # content (a body containing something like `a * b` parses as ambiguous emphasis, and
+          # resolving it can produce output prettier still wants to change). markdownlint --fix
+          # runs first each round because it can itself introduce a prettier violation, so
+          # prettier's output is always what converges and what gets committed.
+          for _ in 1 2 3 4 5; do
+            npm run --prefix tools lint:fix
+            npm run --prefix tools format
+            if npm run --prefix tools format:check > /dev/null 2>&1; then
+              break
+            fi
+          done
+          # Fail loudly rather than pushing content that still is not converged, instead of leaving
+          # CI to fail on the pushed commit.
+          npm run --prefix tools format:check
+
+          if ! git diff --quiet; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git commit -am "chore: fix formatting on the Release PR"
+            git push
+          else
+            echo "Nothing to fix, formatters made no changes."
+          fi

@@ -1,0 +1,148 @@
+# git-cliff configuration.
+# https://git-cliff.org/docs/configuration
+#
+# Adapted from retroglyph's, which in turn came from ratatui's. The template is finicky about
+# whitespace: the `-` markers around `%` control whether a newline is emitted, and getting them
+# wrong shows up as wrong blank-line counts between headings and list items rather than as an
+# error.
+
+[remote.github]
+owner = "crates-lurey-io"
+repo = "turnbase"
+
+[changelog]
+header = """
+# Changelog
+
+All notable changes to this project will be documented in this file.
+<!-- generated from commit messages; several markdownlint rules fight that -->
+<!-- markdownlint-disable line-length no-bare-urls ul-style emphasis-style no-space-in-emphasis no-multiple-blanks -->
+"""
+# The 4-backtick fences in the commit macro are intentional: they escape any backticks appearing
+# inside a commit body.
+body = """
+{%- if not version %}
+## [unreleased]
+{% else -%}
+{%- if package -%} {# release-plz specific variable #}
+## [{{ version }}+{{ package }}]({{ release_link }}) - {{ timestamp | date(format="%Y-%m-%d") }}
+{%- else -%}
+## [{{ version }}]({{ self::remote_url() }}/releases/tag/{{ version }}) - {{ timestamp | date(format="%Y-%m-%d") }}
+{%- endif %}
+{% endif -%}
+
+{% macro commit(commit) -%}
+- [{{ commit.id | truncate(length=7, end="") }}]({{ self::remote_url() }}/commit/{{ commit.id }}) \
+  *({{commit.scope | default(value = "uncategorized") | lower }})* {{ commit.message | upper_first | trim }}\
+  {% if commit.remote.username %} by `@{{ commit.remote.username }}`{%- endif -%}\
+  {% if commit.remote.pr_number %} in [#{{ commit.remote.pr_number }}]({{ self::remote_url() }}/pull/{{ commit.remote.pr_number }}){%- endif %}\
+{%- if commit.breaking %} [**breaking**]{% endif %}
+{%- if commit.body %}\n\n{{ commit.body | indent(prefix="  > ", first=true, blank=true) }}
+{%- endif %}
+{%- for footer in commit.footers %}\n
+{%- if footer.token != "Signed-off-by" and footer.token != "Co-authored-by" %}
+  >
+{{ footer.token | indent(prefix="  > ", first=true, blank=true) }}
+{{- footer.separator }}
+{{- footer.value| indent(prefix="  > ", first=false, blank=true)  }}
+{%- endif %}
+{%- endfor %}
+{% endmacro -%}
+
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | striptags | trim | upper_first }}
+{% for commit in commits | filter(attribute="scope") | sort(attribute="scope") %}
+{{ self::commit(commit=commit) }}
+{%- endfor -%}
+{% for commit in commits %}
+{%- if not commit.scope %}
+{{ self::commit(commit=commit) }}
+{%- endif -%}
+{%- endfor -%}
+{%- endfor %}
+
+{%- if not release_link -%}
+{% if github.contributors | filter(attribute="is_first_time", value=true) | length != 0 %}
+### New Contributors
+{%- endif %}\
+{% for contributor in github.contributors | filter(attribute="is_first_time", value=true) %}
+* `@{{ contributor.username }}` made their first contribution
+{%- if contributor.pr_number %} in \
+[#{{ contributor.pr_number }}]({{ self::remote_url() }}/pull/{{ contributor.pr_number }}) \
+{%- endif %}
+{%- endfor -%}
+{%- endif -%}
+
+{% if version %}
+{% if previous.version %}
+{%- if release_link -%}
+**Full Changelog**: {{ release_link }} {# release-plz specific variable #}
+{%- else -%}
+**Full Changelog**: {{ self::remote_url() }}/compare/{{ previous.version }}...{{ version }}
+{% endif %}
+{% endif %}
+{% else -%}
+  {% raw %}\n{% endraw %}
+{% endif %}
+
+{%- macro remote_url() -%}
+{%- if remote.owner -%} {# release-plz specific variable #}
+https://github.com/{{ remote.owner }}/{{ remote.repo }}\
+{%- else -%}
+https://github.com/{{ remote.github.owner }}/{{ remote.github.repo }}\
+{%- endif -%}
+{% endmacro %}
+"""
+trim = false
+postprocessors = [
+  { pattern = '>---+\n', replace = "" },
+  { pattern = ' +\n', replace = "\n" },
+  # The body's tail (the Full Changelog block) cannot be trimmed with Tera whitespace markers
+  # without also swallowing the blank line separating it from the next heading, because that
+  # separator is literal template text between nested `{% if %}` blocks. Collapse the resulting
+  # run of 3+ blank lines instead, matching what prettier and markdownlint's MD012 expect.
+  { pattern = '\n{3,}', replace = "\n\n" },
+]
+
+[git]
+conventional_commits = true
+filter_unconventional = true
+split_commits = false
+# Strip the trailing "(#123)" that GitHub's squash-merge appends to the subject; the PR number is
+# already linked separately via commit.remote.pr_number in the template above.
+commit_preprocessors = [
+  { pattern = '\((\w+\s)?#([0-9]+)\)', replace = "" },
+]
+commit_parsers = [
+  { field = "id", pattern = "0000000", skip = true }, # release-plz's release-commit placeholder
+  # skip-changelog, two ways. The label match must be `remote.pr_labels`: release-plz injects a
+  # per-commit `remote` object, and it is NOT the `github` object plain git-cliff exposes. Getting
+  # this path wrong does not fail -- it silently drops every commit and produces an empty
+  # changelog, which is how it was found upstream.
+  { field = "remote.pr_labels", pattern = "skip-changelog", skip = true },
+  { footer = "(?i)^changelog: ?ignore", skip = true },
+  { message = "^feat", group = "<!-- 00 -->Features" },
+  { message = "^[fF]ix", group = "<!-- 01 -->Bug Fixes" },
+  { message = "^refactor", group = "<!-- 02 -->Refactor" },
+  { message = "^doc", group = "<!-- 03 -->Documentation" },
+  { message = "^perf", group = "<!-- 04 -->Performance" },
+  { message = "^style", group = "<!-- 05 -->Styling" },
+  { message = "^test", group = "<!-- 06 -->Testing" },
+  { message = "^chore\\(release\\): prepare for", skip = true },
+  { message = "^chore: release", skip = true },
+  { message = "^chore\\(deps\\)", skip = true },
+  { message = "^[cC]hore", group = "<!-- 07 -->Miscellaneous Tasks" },
+  { message = "^build\\(deps\\)", skip = true },
+  { message = "^build", group = "<!-- 08 -->Build" },
+  { body = ".*security", group = "<!-- 09 -->Security" },
+  { message = "^ci", group = "<!-- 10 -->Continuous Integration" },
+  { message = "^revert", group = "<!-- 11 -->Reverted Commits" },
+]
+
+protect_breaking_commits = false
+filter_commits = false
+tag_pattern = "v[0-9]*"
+skip_tags = "beta|alpha"
+ignore_tags = "rc"
+topo_order = false
+sort_commits = "newest"
