@@ -11,20 +11,14 @@ use minion_battle::MinionBattle;
 use retroglyph_core::backend::Headless;
 use retroglyph_core::{Flow, Frame, Terminal, step};
 use turnbase::PlayerId;
-use turnbase_bots::RandomBot;
+use turnbase_bots::Random;
 use turnbase_simulator::{PlayerAgent, SimulationRunner, Simulator};
 
 #[test]
 fn dashboard_renders_a_full_match_headless() {
     let mut agents: HashMap<PlayerId, PlayerAgent<MinionBattle>> = HashMap::new();
-    agents.insert(
-        PlayerId::new(0),
-        PlayerAgent::Ai(Box::new(RandomBot::new(1))),
-    );
-    agents.insert(
-        PlayerId::new(1),
-        PlayerAgent::Ai(Box::new(RandomBot::new(2))),
-    );
+    agents.insert(PlayerId::new(0), PlayerAgent::Ai(Box::new(Random::new(1))));
+    agents.insert(PlayerId::new(1), PlayerAgent::Ai(Box::new(Random::new(2))));
 
     let simulator = Simulator::new(MinionBattle, 0, agents);
     let mut runner = SimulationRunner::new(simulator, Duration::ZERO);

@@ -270,7 +270,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::Mcts;
-    use crate::{Bot, RandomBot, RankedBot};
+    use crate::{Bot, Random, RankedBot};
     use high_card::HighCard;
     use tic_tac_toe::{Move, TicTacToe};
     use turnbase::{Game, PlayerId};
@@ -301,7 +301,7 @@ mod tests {
         let game = TicTacToe;
         for seed in 0..6 {
             let mut x = Mcts::new(2000, seed);
-            let mut o = RandomBot::new(seed + 100);
+            let mut o = Random::new(seed + 100);
             let end = run_match(&mut x, &mut o);
             assert!(
                 game.reward(&end, P0) >= 0.0,

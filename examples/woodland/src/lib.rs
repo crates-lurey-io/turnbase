@@ -450,7 +450,7 @@ mod tests {
         VP_TARGET, Woodland, WoodlandState,
     };
     use turnbase::{Game, PlayerId, Prng};
-    use turnbase_bots::{Bot, RandomBot};
+    use turnbase_bots::{Bot, Random};
 
     const MARQUISE: PlayerId = PlayerId::new(0);
     const ALLIANCE: PlayerId = PlayerId::new(1);
@@ -716,8 +716,8 @@ mod tests {
         let game = Woodland;
         for seed in 0..20 {
             let mut state = game.new_initial_state(seed);
-            let mut marquise_bot = RandomBot::new(seed);
-            let mut alliance_bot = RandomBot::new(seed ^ 0xF00D);
+            let mut marquise_bot = Random::new(seed);
+            let mut alliance_bot = Random::new(seed ^ 0xF00D);
             let mut steps = 0;
             while !game.is_terminal(&state) {
                 let player = game.active_players(&state).iter().next().unwrap();

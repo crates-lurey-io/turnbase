@@ -17,7 +17,7 @@ use retroglyph_core::grid::{Pos, Rect};
 use retroglyph_core::{App, Backend, Flow, Frame, Terminal};
 use retroglyph_widgets::{List, ListState, Modal, StatefulWidget, Theme, offset_for_pos};
 use turnbase::{Determinize, Game, PlayerId};
-use turnbase_bots::{Bot, Ismcts, Mcts, RandomBot};
+use turnbase_bots::{Bot, Ismcts, Mcts, Random};
 use turnbase_match::{PlayerAgent, Simulator};
 
 use crate::PrintableGame;
@@ -78,7 +78,7 @@ impl<G: Game> BotOption<G> {
 /// The uniform-random bot option, available for every game.
 #[must_use]
 pub fn random_bot<G: Game>() -> BotOption<G> {
-    BotOption::new("Random", |seed| Box::new(RandomBot::new(seed)))
+    BotOption::new("Random", |seed| Box::new(Random::new(seed)))
 }
 
 /// The MCTS bot option, for any game whose state and actions are [`Clone`].

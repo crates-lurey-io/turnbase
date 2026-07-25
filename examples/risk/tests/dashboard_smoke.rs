@@ -12,7 +12,7 @@ use retroglyph_core::backend::Headless;
 use retroglyph_core::{Flow, Frame, Terminal, step};
 use risk::Risk;
 use turnbase::PlayerId;
-use turnbase_bots::RandomBot;
+use turnbase_bots::Random;
 use turnbase_simulator::{PlayerAgent, SimulationRunner, Simulator};
 
 #[test]
@@ -21,7 +21,7 @@ fn dashboard_renders_without_panicking() {
     for seat in 0..3 {
         agents.insert(
             PlayerId::new(seat),
-            PlayerAgent::Ai(Box::new(RandomBot::new(u64::from(seat) + 1))),
+            PlayerAgent::Ai(Box::new(Random::new(u64::from(seat) + 1))),
         );
     }
 

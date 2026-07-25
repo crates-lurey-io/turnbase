@@ -211,7 +211,7 @@ mod tests {
     use std::collections::HashMap;
 
     use turnbase::{ActivePlayers, Game, PlayerId};
-    use turnbase_bots::RandomBot;
+    use turnbase_bots::Random;
 
     use super::{PlayerAgent, Simulator};
 
@@ -267,8 +267,8 @@ mod tests {
 
     fn ai_agents() -> HashMap<PlayerId, PlayerAgent<CountToThree>> {
         let mut agents = HashMap::new();
-        agents.insert(P0, PlayerAgent::Ai(Box::new(RandomBot::new(1))));
-        agents.insert(P1, PlayerAgent::Ai(Box::new(RandomBot::new(2))));
+        agents.insert(P0, PlayerAgent::Ai(Box::new(Random::new(1))));
+        agents.insert(P1, PlayerAgent::Ai(Box::new(Random::new(2))));
         agents
     }
 
@@ -288,7 +288,7 @@ mod tests {
     fn step_blocks_on_a_human_seat_until_driven() {
         let mut agents: HashMap<PlayerId, PlayerAgent<CountToThree>> = HashMap::new();
         agents.insert(P0, PlayerAgent::Human);
-        agents.insert(P1, PlayerAgent::Ai(Box::new(RandomBot::new(7))));
+        agents.insert(P1, PlayerAgent::Ai(Box::new(Random::new(7))));
         let mut sim = Simulator::new(CountToThree, 0, agents);
 
         assert_eq!(sim.awaiting_human(), Some(P0));
@@ -304,7 +304,7 @@ mod tests {
     #[test]
     fn primary_human_picks_the_lowest_seat() {
         let mut agents: HashMap<PlayerId, PlayerAgent<CountToThree>> = HashMap::new();
-        agents.insert(P0, PlayerAgent::Ai(Box::new(RandomBot::new(1))));
+        agents.insert(P0, PlayerAgent::Ai(Box::new(Random::new(1))));
         agents.insert(P1, PlayerAgent::Human);
         let sim = Simulator::new(CountToThree, 0, agents);
         assert_eq!(sim.primary_human(), Some(P1));

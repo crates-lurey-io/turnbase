@@ -22,7 +22,7 @@ use std::time::Duration;
 use retroglyph_core::{App, Terminal};
 use retroglyph_terminal_wasm::TerminalWasm;
 use turnbase::{Game, PlayerId};
-use turnbase_bots::RandomBot;
+use turnbase_bots::Random;
 use turnbase_match::{PlayerAgent, Simulator};
 use turnbase_simulator::{BotOption, PrintableGame, SessionApp};
 use web_time::Instant;
@@ -72,7 +72,7 @@ where
 }
 
 /// Builds a [`Simulator`] for `game` with every seat driven by its own
-/// per-seat-seeded [`RandomBot`], so a demo plays itself.
+/// per-seat-seeded [`Random`], so a demo plays itself.
 ///
 /// # Panics
 ///
@@ -84,7 +84,7 @@ pub fn all_bots<G: Game>(game: G, seed: u64) -> Simulator<G> {
     for seat in 0..game.num_players() {
         let index = u32::try_from(seat).expect("seat index fits in u32");
         let id = PlayerId::new(index);
-        let bot = RandomBot::new(seed ^ (u64::from(index) + 1));
+        let bot = Random::new(seed ^ (u64::from(index) + 1));
         agents.insert(id, PlayerAgent::Ai(Box::new(bot)));
     }
     Simulator::new(game, seed, agents)

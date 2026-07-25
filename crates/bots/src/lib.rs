@@ -1,4 +1,4 @@
-//! Bots for the Turnbase engine: `RandomBot`, minimax/alpha-beta, and MCTS.
+//! Bots for the Turnbase engine: `Random`, minimax/alpha-beta, and MCTS.
 //!
 //! Every bot drives a game through the [`turnbase::Game`] trait, so the same
 //! bot works for any game implemented against the engine.
@@ -13,7 +13,7 @@ mod random;
 pub use ismcts::Ismcts;
 pub use mcts::Mcts;
 pub use minimax::Minimax;
-pub use random::RandomBot;
+pub use random::Random;
 
 /// A policy that picks one action for a player at a decision point.
 pub trait Bot<G: Game> {

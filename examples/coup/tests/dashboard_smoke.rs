@@ -14,7 +14,7 @@ use coup::Coup;
 use retroglyph_core::backend::Headless;
 use retroglyph_core::{Flow, Frame, Terminal, step};
 use turnbase::PlayerId;
-use turnbase_bots::RandomBot;
+use turnbase_bots::Random;
 use turnbase_simulator::{PlayerAgent, SimulationRunner, Simulator};
 
 #[test]
@@ -23,7 +23,7 @@ fn dashboard_renders_a_full_match_headless() {
     for seat in 0..4 {
         agents.insert(
             PlayerId::new(seat),
-            PlayerAgent::Ai(Box::new(RandomBot::new(u64::from(seat) + 1))),
+            PlayerAgent::Ai(Box::new(Random::new(u64::from(seat) + 1))),
         );
     }
 

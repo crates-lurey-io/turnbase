@@ -517,7 +517,7 @@ turnbase/
   Cargo.toml                 # workspace root
   crates/
     core/                     # crate `turnbase`: Game trait, ActivePlayers, RNG, Tier-2 triggers
-    bots/                     # crate `turnbase-bots`: RandomBot, minimax/alpha-beta, MCTS helpers
+    bots/                     # crate `turnbase-bots`: Random, minimax/alpha-beta, MCTS helpers
     match/                    # crate `turnbase-match`: turn loop (Simulator, PlayerAgent), no UI/IO
     simulator/                # crate `turnbase-simulator`: retroglyph terminal client over match
     protocol/                 # crate `turnbase-protocol`: typed request/response wire types
