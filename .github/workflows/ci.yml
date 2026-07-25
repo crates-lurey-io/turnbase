@@ -110,9 +110,97 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: just,nextest
-      # The `ci` nextest profile also writes JUnit XML to target/nextest/ci/junit.xml. Nothing
-      # consumes it yet; wiring it to Codecov Test Analytics is Phase 6.
       - run: just test-ci
+
+      # Codecov Test Analytics: flaky-test detection, failure rate, and run-time trends. Reads the
+      # JUnit XML the `ci` nextest profile writes (see .config/nextest.toml). Runs even when the
+      # tests failed -- `!cancelled()` rather than `always()`, so a genuinely cancelled run still
+      # skips -- because failed runs are exactly the ones Test Analytics most wants to see.
+      #
+      # Split first, one file per crate flag: Codecov's flag filter is set per upload, not per
+      # <testsuite> within an upload, so a single combined upload would attribute every crate's
+      # tests to every other crate's flag. See the script's docstring.
+      - name: Split JUnit report by crate flag
+        if: ${{ !cancelled() }}
+        run: python3 tools/split-junit-flags.py target/nextest/ci/junit.xml target/nextest/ci/flags
+
+      # `disable_search: true` is load-bearing, not cosmetic: the Codecov CLI auto-discovers any
+      # *junit.xml on disk in addition to `files:`, and the pre-split combined report still sits in
+      # the parent directory. Without it every flag would silently re-upload that combined file too,
+      # recreating the exact misattribution the split exists to prevent.
+      - name: Upload test results to Codecov
+        if: ${{ !cancelled() }}
+        uses: codecov/codecov-action@v7
+        with:
+          files: target/nextest/ci/flags/core.xml
+          flags: core
+          report_type: test_results
+          disable_search: true
+          token: ${{ secrets.CODECOV_TOKEN }}
+      - name: Upload test results to Codecov (bots)
+        if: ${{ !cancelled() }}
+        uses: codecov/codecov-action@v7
+        with:
+          files: target/nextest/ci/flags/bots.xml
+          flags: bots
+          report_type: test_results
+          disable_search: true
+          token: ${{ secrets.CODECOV_TOKEN }}
+      - name: Upload test results to Codecov (match)
+        if: ${{ !cancelled() }}
+        uses: codecov/codecov-action@v7
+        with:
+          files: target/nextest/ci/flags/match.xml
+          flags: match
+          report_type: test_results
+          disable_search: true
+          token: ${{ secrets.CODECOV_TOKEN }}
+      - name: Upload test results to Codecov (simulator)
+        if: ${{ !cancelled() }}
+        uses: codecov/codecov-action@v7
+        with:
+          files: target/nextest/ci/flags/simulator.xml
+          flags: simulator
+          report_type: test_results
+          disable_search: true
+          token: ${{ secrets.CODECOV_TOKEN }}
+      - name: Upload test results to Codecov (protocol)
+        if: ${{ !cancelled() }}
+        uses: codecov/codecov-action@v7
+        with:
+          files: target/nextest/ci/flags/protocol.xml
+          flags: protocol
+          report_type: test_results
+          disable_search: true
+          token: ${{ secrets.CODECOV_TOKEN }}
+      - name: Upload test results to Codecov (session)
+        if: ${{ !cancelled() }}
+        uses: codecov/codecov-action@v7
+        with:
+          files: target/nextest/ci/flags/session.xml
+          flags: session
+          report_type: test_results
+          disable_search: true
+          token: ${{ secrets.CODECOV_TOKEN }}
+      - name: Upload test results to Codecov (cli)
+        if: ${{ !cancelled() }}
+        uses: codecov/codecov-action@v7
+        with:
+          files: target/nextest/ci/flags/cli.xml
+          flags: cli
+          report_type: test_results
+          disable_search: true
+          token: ${{ secrets.CODECOV_TOKEN }}
+      # The example games and their integration tests, which exercise several crates at once and do
+      # not map to a single crate flag. Uploaded with no flag rather than dropped.
+      - name: Upload test results to Codecov (unflagged)
+        if: ${{ !cancelled() }}
+        uses: codecov/codecov-action@v7
+        with:
+          files: target/nextest/ci/flags/unflagged.xml
+          report_type: test_results
+          disable_search: true
+          token: ${{ secrets.CODECOV_TOKEN }}
 
   coverage:
     runs-on: ubuntu-latest
@@ -130,6 +218,10 @@ jobs:
       - uses: codecov/codecov-action@v7
         with:
           files: lcov.info
+          # One combined workspace lcov.info, attributed per crate: each flag is scoped by its own
+          # `paths:` in codecov.yml, so a single upload still yields per-crate numbers rather than
+          # one blended workspace figure.
+          flags: core,bots,match,simulator,protocol,session,cli
           # No CODECOV_TOKEN secret configured yet for this repo; don't fail CI on upload
           # errors until one is added (see codecov.yml).
           fail_ci_if_error: false
