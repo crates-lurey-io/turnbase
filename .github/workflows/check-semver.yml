@@ -1,0 +1,120 @@
+name: Check Semver
+
+# A fast PR-time signal for API breaking changes. NOT the enforcement mechanism and NOT a merge
+# gate (the job always exits 0). The authority is release-plz's own semver_check, which runs
+# cargo-semver-checks against the last published version while computing the Release PR and bumps
+# accordingly. See RELEASING.md.
+#
+# Deliberately compares against the PR's base commit (--baseline-rev), not the last crates.io
+# release. Comparing against the registry like release-plz does would mean every PR stacked on an
+# already-unreleased breaking change on main also reports breaking, even PRs that never touch the
+# API. This job answers "did THIS PR add a break"; release-plz answers "is main breaking relative
+# to the last release".
+#
+# Non-blocking on purpose: a crate's version is not bumped until the Release PR, so a hard gate
+# would fail almost every legitimate API-breaking PR. This exists so a reviewer sees the finding
+# before merge. The `breaking` label and a report comment mirror it onto the PR, best-effort only,
+# since a fork PR's token is read-only on `pull_request`.
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  check-semver:
+    name: Check semver
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Full history so --baseline-rev can resolve the PR's base commit locally.
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-semver-checks
+
+      - name: Run cargo-semver-checks
+        id: semver-check
+        shell: bash
+        run: |
+          set +e
+          cargo semver-checks check-release \
+            --baseline-rev "${{ github.event.pull_request.base.sha }}" \
+            --color never \
+            2>&1 | tee semver-check-output.txt
+          exit_code="${PIPESTATUS[0]}"
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+
+      - name: Sync breaking label and report comment
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          EXIT_CODE: ${{ steps.semver-check.outputs.exit_code }}
+        run: |
+          # No `set -e`: every mutating call below is already `|| true`-guarded (best-effort on
+          # fork PRs), and a failed read should fall back to "no existing comment" rather than
+          # aborting.
+          marker='<!-- check-semver:report -->'
+          existing_id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" --paginate \
+            --jq "[.[] | select(.body | startswith(\"$marker\"))] | if length > 0 then .[-1].id else empty end")
+
+          # Distinguish cargo-semver-checks' exit codes: 0 = clean, 100 = breaking change found,
+          # anything else = the tool failed to reach a verdict. A build or network hiccup must not
+          # be misread as "no breaking change" and flip the label the wrong way.
+          case "$EXIT_CODE" in
+            0)
+              gh pr edit "$PR_NUMBER" --remove-label breaking || true
+              if [ -n "$existing_id" ]; then
+                gh api "repos/$GITHUB_REPOSITORY/issues/comments/$existing_id" -X DELETE || true
+              fi
+              ;;
+            100)
+              gh pr edit "$PR_NUMBER" --add-label breaking || true
+
+              # Cap the embedded report well under GitHub's ~65k comment limit; the untruncated
+              # output is always in the linked Actions run.
+              report=$(cat semver-check-output.txt)
+              max_chars=50000
+              if [ "${#report}" -gt "$max_chars" ]; then
+                report="${report:0:$max_chars}"$'\n'"... (truncated -- see the full log in the Actions run linked below)"
+              fi
+              run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+
+              {
+                echo "$marker"
+                echo "### :warning: Breaking API change detected"
+                echo
+                echo "\`cargo-semver-checks\` found a breaking change in this PR relative to its"
+                echo "base commit (\`$BASE_SHA\`). This is a non-blocking, PR-time signal only --"
+                echo "see [RELEASING.md](https://github.com/$GITHUB_REPOSITORY/blob/main/RELEASING.md#declaring-breaking-changes)"
+                echo "for how breaking changes are actually declared and versioned."
+                echo
+                echo '<details><summary>Full report</summary>'
+                echo
+                echo '```'
+                echo "$report"
+                echo '```'
+                echo
+                echo '</details>'
+                echo
+                echo "_Updated automatically as this PR changes._ Last run: <$run_url>"
+              } >comment-body.md
+
+              if [ -n "$existing_id" ]; then
+                gh api "repos/$GITHUB_REPOSITORY/issues/comments/$existing_id" \
+                  -X PATCH -F body=@comment-body.md || true
+              else
+                gh pr comment "$PR_NUMBER" --body-file comment-body.md || true
+              fi
+              ;;
+            *)
+              echo "::warning::cargo-semver-checks exited $EXIT_CODE (not 0 or 100); leaving breaking label/comment untouched. See the job log."
+              ;;
+          esac

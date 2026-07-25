@@ -1,0 +1,26 @@
+# release-plz configuration.
+# https://release-plz.dev/docs/config
+#
+# The flow (RELEASING.md has the full picture):
+#   1. Land PRs on main. Each PR title is a Conventional Commit; squash-merge makes it the commit.
+#   2. `release-plz release-pr` keeps a standing Release PR open, bumping each changed crate's
+#      version and per-crate CHANGELOG.md from that conventional history.
+#   3. Merging the Release PR triggers `release-plz release`, which publishes the bumped crates,
+#      tags them, and creates the GitHub releases.
+#
+# Versioning is per-crate: only crates that actually changed are bumped, cascading through the
+# `turnbase` dependency graph. There is no lockstep and no single workspace changelog.
+
+[workspace]
+# Per-crate CHANGELOG.md at release-plz's default location, crates/<crate>/CHANGELOG.md.
+changelog_config = "cliff.toml"
+
+# Run cargo-semver-checks while computing the Release PR, so the proposed bump is always large
+# enough for the API change actually detected. This is the real guard against an undeclared
+# breaking change shipping as a patch; the PR-time check-semver.yml job is only a fast reviewer
+# signal against the PR's own base.
+semver_check = true
+
+git_release_body = """
+{{ changelog | replace(from=" by @", to=" by ") }}
+"""
