@@ -57,6 +57,12 @@ jobs:
     # job can race ahead and re-propose the version the release job is mid-publish on, producing a
     # duplicate changelog entry. Known release-plz footgun; see release-plz#1542.
     needs: release-plz-release
+    # `needs` alone would also SKIP this job whenever the publish job fails, which is wrong: the
+    # two do independent work and the Release PR is how a broken release gets fixed. It is also a
+    # bootstrap deadlock -- before crates.io Trusted Publishing is configured the publish job fails
+    # on every push, so no Release PR could ever be opened. `!cancelled()` keeps the ordering that
+    # avoids the race while dropping the unwanted skip-on-failure.
+    if: ${{ !cancelled() }}
     concurrency:
       group: release-plz-pr-${{ github.ref }}
       cancel-in-progress: false
