@@ -53,8 +53,31 @@ are unconstrained.
 one crate, use `workspace` (tooling, CI, docs, release config) or `deps` (dependency bumps). A
 scopeless title is accepted but `workspace` is preferred.
 
-CI does not enforce this yet. Follow it anyway: a commit that does not conform is one the changelog
-generator will silently drop rather than flag.
+CI enforces this on the PR title (`.github/workflows/pr-title.yml`). It matters beyond tidiness: a
+commit that does not conform is one the changelog generator will silently drop rather than flag.
+
+## Labels
+
+Mostly automatic. `c:<area>` labels are applied from the changed file paths and kept in sync as the
+PR evolves, with the PR title's scope as a fallback for what paths cannot infer. New issues from
+non-maintainers get `needs-triage`.
+
+`.github/labels.yml` is the source of truth. To apply a change to it:
+
+```sh
+.github/scripts/sync-labels.sh              # create/update
+.github/scripts/sync-labels.sh --delete-extra   # also remove labels absent from the file
+```
+
+It needs `gh` and `yq`, and is run by hand rather than in CI so no workflow needs label-write scope
+on every push. Deleting is opt-in: a plain run reports extras without removing them.
+
+## Dependency updates
+
+Dependabot covers all three ecosystems (Cargo, GitHub Actions, and the npm formatter toolchain under
+`tools/`) weekly, grouped so routine bumps arrive as one reviewable batch rather than a wall of
+individual PRs. Majors are ungrouped, since those are the ones needing real review. All of it lands
+under the `deps` scope.
 
 ## Adding a reference game
 

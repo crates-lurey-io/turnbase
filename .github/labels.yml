@@ -1,0 +1,51 @@
+# Source of truth for repo labels. Applied via .github/scripts/sync-labels.sh, run by hand by a
+# maintainer rather than in CI, so no workflow needs a token with label-write scope on every push.
+#
+#   c:<area>  which crate or area an issue/PR touches; mirrors the Conventional Commit scopes
+#             enforced by .github/workflows/pr-title.yml
+#
+# Issue type and priority are tracked with GitHub's native Type/Priority fields, not labels.
+
+- name: 'c:core'
+  color: '1D76DB'
+  description: 'crates/core (turnbase)'
+- name: 'c:bots'
+  color: '1D76DB'
+  description: 'crates/bots'
+- name: 'c:match'
+  color: '1D76DB'
+  description: 'crates/match'
+- name: 'c:simulator'
+  color: '1D76DB'
+  description: 'crates/simulator'
+- name: 'c:protocol'
+  color: '1D76DB'
+  description: 'crates/protocol'
+- name: 'c:session'
+  color: '1D76DB'
+  description: 'crates/session'
+- name: 'c:cli'
+  color: '1D76DB'
+  description: 'crates/cli'
+- name: 'c:demos'
+  color: '1D76DB'
+  description: 'crates/demos'
+- name: 'c:examples'
+  color: '1D76DB'
+  description: 'examples/ (the ten reference games)'
+- name: 'c:workspace'
+  color: '0E4A8C'
+  description: 'Workspace-wide: tooling, CI, root docs, release config'
+
+- name: 'breaking'
+  color: 'E99695'
+  description: 'Semver-breaking change'
+- name: 'needs-triage'
+  color: 'EDEDED'
+  description: 'Not yet reviewed by a maintainer'
+- name: 'blocked'
+  color: '000000'
+  description: 'Waiting on an external dependency or decision'
+- name: 'skip-changelog'
+  color: 'FEF2C0'
+  description: 'Keep this PR out of the generated changelog (inert until release automation lands)'
