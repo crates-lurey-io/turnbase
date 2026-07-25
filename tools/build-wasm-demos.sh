@@ -24,6 +24,15 @@ templates="$repo_root/docs/demos"
 games=(coup risk minion_battle woodland blackjack)
 titles=(Coup Risk "Minion Battle" Woodland Blackjack)
 
+# The on-screen key bar each page renders, as [label, key] pairs for the
+# template's __KEYS__ (key is a KEY constant name or a literal character).
+# Touch devices have no keyboard at all, so a demo whose bar offers keys its App
+# ignores is just dead buttons: the four dashboard games take the full session
+# controls, while blackjack drives its own App with its own smaller set.
+dashboard_keys='[["←","LEFT"],["↑","UP"],["↓","DOWN"],["→","RIGHT"],["Enter","ENTER"],["Space"," "],["c config","c"],["r reset","r"],["? help","?"]]'
+blackjack_keys='[["Space"," "],["m mode","m"],["p pause","p"],["r reset","r"]]'
+keys=("$dashboard_keys" "$dashboard_keys" "$dashboard_keys" "$dashboard_keys" "$blackjack_keys")
+
 cards=""
 for i in "${!games[@]}"; do
   game="${games[$i]}"
@@ -45,7 +54,7 @@ for i in "${!games[@]}"; do
     --out-name "$game" \
     "$repo_root/target/wasm32-unknown-unknown/release/examples/$game.wasm"
 
-  sed -e "s/__GAME__/$game/g" -e "s/__TITLE__/$title/g" \
+  sed -e "s/__GAME__/$game/g" -e "s/__TITLE__/$title/g" -e "s|__KEYS__|${keys[$i]}|g" \
     "$templates/game-template.html" > "$out_dir/$game/index.html"
   # Literal arrow glyph, not the &rarr; entity: the cards are spliced into the
   # index below, and an ampersand in substituted text is the exact thing a sed

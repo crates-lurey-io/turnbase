@@ -117,6 +117,11 @@ it); `m` toggles Auto/Step, `Space` single-steps, `+`/`-` change speed, `p`
 pauses, and `r` restarts with a fresh seed. A human seat plays through the
 on-screen action menu, and the status bar lists the controls.
 
+The dashboard takes the mouse as well as the keyboard: the wheel scrolls the
+log strip (as do `PgUp`/`PgDn` and `Home`/`End`), its scrollbar is
+click-to-jump and drag-to-scroll, and clicking a row in the action menu selects
+it, with a second click on the selected row playing it.
+
 ## Live demos and docs
 
 Every push to `main` publishes to <https://crates-lurey-io.github.io/turnbase/>:
@@ -124,7 +129,10 @@ Every push to `main` publishes to <https://crates-lurey-io.github.io/turnbase/>:
 - [Interactive demos](https://crates-lurey-io.github.io/turnbase/demos/) of
   each dashboard game, running the exact same `App` as the native client but
   compiled to WebAssembly and rendered into `xterm.js`. They self-play out of
-  the box; the same setup modal and controls work in the browser.
+  the box; the same setup modal and controls work in the browser. The grid is
+  fitted to the window (the font scales down until at least 80 columns fit), the
+  mouse and touch gestures are forwarded as terminal mouse events, and an
+  on-screen key bar drives a session on a device with no keyboard.
 - [API docs](https://crates-lurey-io.github.io/turnbase/crates/) for the seven
   published libraries, with per-crate `llms.txt` for coding assistants.
 - A [coverage report](https://crates-lurey-io.github.io/turnbase/coverage/).
