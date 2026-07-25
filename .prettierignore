@@ -1,0 +1,7 @@
+.matan/
+.pi/
+.pi-subagents/
+target/
+node_modules/
+package-lock.json
+Cargo.lock
