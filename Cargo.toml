@@ -27,6 +27,54 @@ edition = "2024"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/crates-lurey-io/turnbase"
 
+# One home for every version requirement in the workspace. Members inherit with
+# `<dep> = { workspace = true }` and add their own `features` / `optional` on top.
+#
+# This exists mainly so a shared requirement is edited once instead of once per manifest. The
+# retroglyph block is the motivating case: those crates are one upstream workspace released
+# together, only work as a set, and were previously pinned across ten separate manifests, so a
+# partial bump left two incompatible copies of retroglyph-core in the lockfile.
+[workspace.dependencies]
+# Internal libraries, by path. These are the seven publishable crates; the example games are
+# publish = false and stay declared inline at their use sites.
+#
+# turnbase-cli and turnbase-simulator are hoisted with default-features = false because members
+# disagree about wanting the default: 10 of 10 cli dependents and 5 of 8 simulator dependents want
+# it off (wasm builds cannot link crossterm). Cargo cannot cleanly turn a workspace dependency's
+# default features back off at the member level, so the workspace takes the restrictive setting and
+# the members that do want the terminal backend ask for it by name. Both crates' `default` is
+# exactly one feature, so `default-features = false, features = ["<that feature>"]` is equivalent
+# to the old declaration rather than merely similar.
+turnbase = { path = "crates/core" }
+turnbase-bots = { path = "crates/bots" }
+turnbase-match = { path = "crates/match" }
+turnbase-protocol = { path = "crates/protocol" }
+turnbase-session = { path = "crates/session" }
+turnbase-simulator = { path = "crates/simulator", default-features = false }
+turnbase-cli = { path = "crates/cli", default-features = false }
+
+# retroglyph: one upstream workspace, released together. Bump these as a set, never individually --
+# retroglyph-crossterm 0.1.3 requires retroglyph-core 0.3, so a patch bump of one drags a breaking
+# change of the other. .github/dependabot.yml groups them for the same reason.
+retroglyph-core = "0.3"
+retroglyph-widgets = "0.3"
+retroglyph-crossterm = "0.1"
+retroglyph-terminal-wasm = "0.1"
+
+# Third-party.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+log = "0.4"
+web-time = "1"
+# Pinned exactly to match retroglyph-terminal-wasm's own wasm-bindgen, so the generated JS glue
+# agrees with the runtime shim.
+wasm-bindgen = "=0.2.106"
+console_error_panic_hook = "0.1"
+
+# Dev-only.
+proptest = "1"
+tempfile = "3"
+
 [workspace.lints.rust]
 unsafe_code = "forbid"
 

@@ -11,19 +11,19 @@ publish = false
 workspace = true
 
 [dependencies]
-turnbase = { path = "../core" }
-turnbase-match = { path = "../match" }
-turnbase-bots = { path = "../bots" }
+turnbase = { workspace = true }
+turnbase-match = { workspace = true }
+turnbase-bots = { workspace = true }
 # No crossterm: the demos render through a browser terminal backend, so the
 # dashboard stack must build for wasm32 (see turnbase-simulator's `crossterm`
 # feature).
-turnbase-simulator = { path = "../simulator", default-features = false }
-retroglyph-core = { version = "0.3" }
-retroglyph-terminal-wasm = { version = "0.1" }
+turnbase-simulator = { workspace = true }
+retroglyph-core = { workspace = true }
+retroglyph-terminal-wasm = { workspace = true }
 # A portable Instant: a zero-cost re-export of std::time on native, and backed
 # by the browser's Performance.now() on wasm32, so the demo clock is one type
 # on both targets.
-web-time = "1"
+web-time = { workspace = true }
 
 # The reference games, each an optional dependency enabled by a same-named
 # feature so a single game's demo (`--example <game> --features <game>`) links
@@ -38,8 +38,8 @@ blackjack = { path = "../../examples/blackjack", default-features = false, featu
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 # Pinned to match retroglyph-terminal-wasm's own wasm-bindgen so the generated
 # JS glue is compatible; the wasm-bindgen CLI installed in CI must match too.
-wasm-bindgen = "=0.2.106"
-console_error_panic_hook = "0.1"
+wasm-bindgen = { workspace = true }
+console_error_panic_hook = { workspace = true }
 
 [features]
 # One feature per game. The demo build enables exactly one (plus the harness

@@ -20,11 +20,11 @@ default = ["crossterm"]
 crossterm = ["dep:retroglyph-crossterm"]
 
 [dependencies]
-turnbase = { path = "../core" }
-turnbase-match = { path = "../match" }
-turnbase-bots = { path = "../bots" }
-retroglyph-core = { version = "0.3" }
+turnbase = { workspace = true }
+turnbase-match = { workspace = true }
+turnbase-bots = { workspace = true }
+retroglyph-core = { workspace = true }
 # Backend-generic widgets (the setup modal, seat list). wasm-safe, so the web
 # demos get the same interactive session as the native client.
-retroglyph-widgets = { version = "0.3" }
-retroglyph-crossterm = { version = "0.1", optional = true }
+retroglyph-widgets = { workspace = true }
+retroglyph-crossterm = { workspace = true, optional = true }

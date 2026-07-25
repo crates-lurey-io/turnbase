@@ -15,12 +15,12 @@ default = ["cli"]
 cli = ["dep:turnbase-cli"]
 
 [dependencies]
-turnbase = { path = "../../crates/core", features = ["serde"] }
-serde = { version = "1", features = ["derive"] }
-turnbase-cli = { path = "../../crates/cli", default-features = false, optional = true }
+turnbase = { workspace = true, features = ["serde"] }
+serde = { workspace = true, features = ["derive"] }
+turnbase-cli = { workspace = true, optional = true }
 
 [dev-dependencies]
-proptest = "1"
+proptest = { workspace = true }
 
 [[bin]]
 name = "high_card"
