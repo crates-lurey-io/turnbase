@@ -8,11 +8,11 @@ use crate::Bot;
 ///
 /// Deterministic given its seed: the same seed and the same sequence of
 /// positions produce the same choices, which keeps games reproducible.
-pub struct RandomBot {
+pub struct Random {
     rng: Prng,
 }
 
-impl RandomBot {
+impl Random {
     /// Creates a bot seeded from `seed`.
     #[must_use]
     pub const fn new(seed: u64) -> Self {
@@ -22,7 +22,7 @@ impl RandomBot {
     }
 }
 
-impl<G: Game> Bot<G> for RandomBot {
+impl<G: Game> Bot<G> for Random {
     fn choose(&mut self, game: &G, state: &G::State, player: PlayerId) -> Option<G::Action> {
         let mut actions = game.legal_actions(state, player);
         if actions.is_empty() {

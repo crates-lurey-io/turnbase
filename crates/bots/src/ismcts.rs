@@ -306,7 +306,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::Ismcts;
-    use crate::{Bot, RandomBot};
+    use crate::{Bot, Random};
     use coup::{Coup, CoupState};
     use tic_tac_toe::{Move, TicTacToe};
     use turnbase::{Game, PlayerId};
@@ -343,7 +343,7 @@ mod tests {
         let game = TicTacToe;
         for seed in 0..6 {
             let mut x = Ismcts::new(2000, seed);
-            let mut o = RandomBot::new(seed + 100);
+            let mut o = Random::new(seed + 100);
             let end = play(&game, game.new_initial_state(0), &mut x, &mut o);
             assert!(
                 game.reward(&end, P0) >= 0.0,
@@ -375,12 +375,12 @@ mod tests {
             let start = game.new_initial_state(seed);
             let end: CoupState = if seed % 2 == 0 {
                 let mut a = Ismcts::new(400, seed);
-                let mut b = RandomBot::new(seed ^ 0x55);
+                let mut b = Random::new(seed ^ 0x55);
                 play(&game, start, &mut a, &mut b)
             } else {
                 // Odd seeds: still measure seat 0 = ISMCTS, fresh generators.
                 let mut a = Ismcts::new(400, seed ^ 0xAA);
-                let mut b = RandomBot::new(seed);
+                let mut b = Random::new(seed);
                 play(&game, start, &mut a, &mut b)
             };
             if game.reward(&end, P0) > 0.0 {

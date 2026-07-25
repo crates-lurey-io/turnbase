@@ -17,15 +17,13 @@ it.
 
 | Crate | Description |
 | --- | --- |
-| [`crates/core`](./crates/core) | The `Game` trait and supporting types (`State`, `Prng`, `Pile`, effects). Published as `turnbase`. |
-| [`crates/bots`](./crates/bots) | Search and policy bots: `RandomBot`, `Minimax`, `Mcts`, `Ismcts`. Published as `turnbase-bots`. |
-| [`crates/match`](./crates/match) | The turn loop: `Simulator` and `PlayerAgent`, with no UI or I/O. Published as `turnbase-match`. |
-| [`crates/simulator`](./crates/simulator) | Interactive retroglyph terminal client over a `turnbase-match` loop. Published as `turnbase-simulator`. |
-| [`crates/protocol`](./crates/protocol) | Typed request/response wire types. Published as `turnbase-protocol`. |
-| [`crates/session`](./crates/session) | The `Session` port: in-memory and file-backed hosts. Published as `turnbase-session`. |
-| [`crates/cli`](./crates/cli) | Generic command-line runner (`run`, `run_tui`). Published as `turnbase-cli`. |
-| [`examples/`](./examples) | Ten standalone reference games, each its own crate (see the table below). Not published. |
-| [`crates/demos`](./crates/demos) | WASM harness that runs each reference game in the browser via `retroglyph-terminal-wasm`. Not published. |
+| [`core`](./crates/core) | The `Game` trait and supporting types (`State`, `Prng`, `Pile`, effects). |
+| [`bots`](./crates/bots) | Search and policy bots: `Random`, `Minimax`, `Mcts`, `Ismcts`. |
+| [`match`](./crates/match) | The turn loop: `Simulator` and `PlayerAgent`, with no UI or I/O. |
+| [`simulator`](./crates/simulator) | Interactive retroglyph terminal client over a `turnbase-match` loop. |
+| [`protocol`](./crates/protocol) | Typed request/response wire types. |
+| [`session`](./crates/session) | The `Session` port: in-memory and file-backed hosts. |
+| [`cli`](./crates/cli) | Generic command-line runner (`run`, `run_tui`). |
 
 The layer above the core (sessions, hosts, headless/interactive/networked
 clients) is described in

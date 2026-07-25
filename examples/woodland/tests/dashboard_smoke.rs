@@ -10,21 +10,15 @@ use std::time::Duration;
 use retroglyph_core::backend::Headless;
 use retroglyph_core::{Flow, Frame, Terminal, step};
 use turnbase::PlayerId;
-use turnbase_bots::RandomBot;
+use turnbase_bots::Random;
 use turnbase_simulator::{PlayerAgent, SimulationRunner, Simulator};
 use woodland::Woodland;
 
 #[test]
 fn dashboard_renders_a_full_match_headless() {
     let mut agents: HashMap<PlayerId, PlayerAgent<Woodland>> = HashMap::new();
-    agents.insert(
-        PlayerId::new(0),
-        PlayerAgent::Ai(Box::new(RandomBot::new(1))),
-    );
-    agents.insert(
-        PlayerId::new(1),
-        PlayerAgent::Ai(Box::new(RandomBot::new(2))),
-    );
+    agents.insert(PlayerId::new(0), PlayerAgent::Ai(Box::new(Random::new(1))));
+    agents.insert(PlayerId::new(1), PlayerAgent::Ai(Box::new(Random::new(2))));
 
     let simulator = Simulator::new(Woodland, 0, agents);
     let mut runner = SimulationRunner::new(simulator, Duration::ZERO);

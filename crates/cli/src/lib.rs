@@ -25,7 +25,7 @@ use clap::{Args, Parser, Subcommand};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use turnbase::{Game, PlayerId};
-use turnbase_bots::RandomBot;
+use turnbase_bots::Random;
 use turnbase_match::{PlayerAgent, Simulator};
 use turnbase_protocol::{Request, Response};
 use turnbase_session::FileSession;
@@ -321,7 +321,7 @@ where
 }
 
 /// Builds one agent per seat: [`PlayerAgent::Human`] for a seat in `manual`,
-/// otherwise a per-seat-seeded [`RandomBot`]. `manual` empty means all bots.
+/// otherwise a per-seat-seeded [`Random`]. `manual` empty means all bots.
 fn build_agents<G: Game>(game: &G, seed: u64, manual: &[u32]) -> HashMap<PlayerId, PlayerAgent<G>> {
     let mut agents = HashMap::new();
     for seat in 0..game.num_players() {
@@ -329,7 +329,7 @@ fn build_agents<G: Game>(game: &G, seed: u64, manual: &[u32]) -> HashMap<PlayerI
         let agent = if manual.contains(&id.index()) {
             PlayerAgent::Human
         } else {
-            PlayerAgent::Ai(Box::new(RandomBot::new(seat_seed(seed, id.index()))))
+            PlayerAgent::Ai(Box::new(Random::new(seat_seed(seed, id.index()))))
         };
         agents.insert(id, agent);
     }

@@ -219,7 +219,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::Minimax;
-    use crate::{Bot, RandomBot, RankedBot};
+    use crate::{Bot, Random, RankedBot};
     use proptest::prelude::*;
     use tic_tac_toe::{Cell, Move, TicTacToe};
     use turnbase::{Game, PlayerId, Prng, Reversible};
@@ -253,7 +253,7 @@ mod tests {
         let game = TicTacToe;
         for seed in 0..25 {
             let mut x = Minimax::new(9);
-            let mut o = RandomBot::new(seed);
+            let mut o = Random::new(seed);
             let end = run_match(&mut x, &mut o);
             assert!(
                 game.reward(&end, P0) >= 0.0,
@@ -320,7 +320,7 @@ mod tests {
     #[test]
     fn random_bot_plays_only_legal_moves() {
         let game = TicTacToe;
-        let mut bot = RandomBot::new(7);
+        let mut bot = Random::new(7);
         let mut state = game.new_initial_state(0);
         while !game.is_terminal(&state) {
             let player = game.active_players(&state).iter().next().unwrap();

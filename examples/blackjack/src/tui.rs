@@ -27,7 +27,7 @@ use std::collections::HashMap;
 #[cfg(feature = "ui")]
 use std::process::ExitCode;
 #[cfg(feature = "ui")]
-use turnbase_bots::RandomBot;
+use turnbase_bots::Random;
 #[cfg(feature = "ui")]
 use turnbase_cli::PlayArgs;
 #[cfg(feature = "ui")]
@@ -50,10 +50,10 @@ pub fn play(game: Blackjack, args: &PlayArgs) -> ExitCode {
         let mut agents = HashMap::new();
         agents.insert(PLAYER, PlayerAgent::Human);
         // The dealer's `legal_actions` is a singleton, so any agent plays its
-        // script; a RandomBot is the simplest way to fill the seat.
+        // script; a Random is the simplest way to fill the seat.
         agents.insert(
             DEALER,
-            PlayerAgent::Ai(Box::new(RandomBot::new(seed ^ 0x5EED_D00D))),
+            PlayerAgent::Ai(Box::new(Random::new(seed ^ 0x5EED_D00D))),
         );
         Simulator::new(game, seed, agents)
     };
@@ -386,7 +386,7 @@ mod tests {
 
     use retroglyph_core::backend::Headless;
     use retroglyph_core::{Flow, Frame, Terminal, step};
-    use turnbase_bots::RandomBot;
+    use turnbase_bots::Random;
     use turnbase_match::{PlayerAgent, Simulator};
 
     use super::BlackjackTui;
@@ -399,8 +399,8 @@ mod tests {
         // turn, hand transitions, match over) against retroglyph's headless
         // backend without a real terminal.
         let mut agents = HashMap::new();
-        agents.insert(PLAYER, PlayerAgent::Ai(Box::new(RandomBot::new(1))));
-        agents.insert(DEALER, PlayerAgent::Ai(Box::new(RandomBot::new(2))));
+        agents.insert(PLAYER, PlayerAgent::Ai(Box::new(Random::new(1))));
+        agents.insert(DEALER, PlayerAgent::Ai(Box::new(Random::new(2))));
         let sim = Simulator::new(Blackjack::new(3), 7, agents);
         let mut tui = BlackjackTui::new(sim);
         let mut term = Terminal::new(Headless::new(80, 24));
