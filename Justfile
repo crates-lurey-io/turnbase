@@ -6,18 +6,21 @@ default:
 rustfmt:
     cargo fmt --all -- --check
 
+# Probe for the installed binary, not just tools/node_modules: a partial or pruned tree (e.g. left
+# behind after a branch switch that removed the ignore rule) satisfies a directory test but has no
+# .bin, so the install gets skipped and the recipe fails with "command not found".
 prettier:
-    @[ -d tools/node_modules ] || npm ci --prefix tools
+    @[ -x tools/node_modules/.bin/prettier ] || npm ci --prefix tools
     npm --prefix tools run format:check
 
 markdown:
-    @[ -d tools/node_modules ] || npm ci --prefix tools
+    @[ -x tools/node_modules/.bin/markdownlint-cli2 ] || npm ci --prefix tools
     npm --prefix tools run lint
 
 # Auto-fix Rust + Markdown/YAML/JSON formatting.
 fmt:
     cargo fmt --all
-    @[ -d tools/node_modules ] || npm ci --prefix tools
+    @[ -x tools/node_modules/.bin/prettier ] || npm ci --prefix tools
     npm --prefix tools run format
 
 # Check-only counterpart of `fmt` (what CI's format job runs).
