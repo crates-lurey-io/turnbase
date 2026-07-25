@@ -1,0 +1,20 @@
+{
+  "config": {
+    // Prettier owns wrapping (printWidth 100, proseWrap always); letting markdownlint
+    // also police line length just produces conflicting fix suggestions.
+    "line-length": false,
+    // The crate/game tables in README.md repeat headings under different parents.
+    "no-duplicate-heading": { "siblings_only": true },
+    // docs/site/index.html is hand-written, and the README embeds badge <img> markup.
+    "no-inline-html": false
+  },
+  "ignores": [
+    "**/node_modules/**",
+    "target/**",
+    ".git/**",
+    ".jj/**",
+    ".matan/**",
+    ".pi/**",
+    ".pi-subagents/**"
+  ]
+}

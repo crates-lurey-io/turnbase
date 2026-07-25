@@ -10,6 +10,11 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
 
+# Least privilege by default. No job here writes to the repo; the jobs that need more (none
+# currently) should raise it locally rather than widening this.
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
 
@@ -21,10 +26,17 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: tools/package-lock.json
       - uses: taiki-e/install-action@v2
         with:
           tool: just
-      - run: just format
+      - run: npm ci --prefix tools
+      - run: just rustfmt
+      - run: just prettier
 
   lint:
     runs-on: ubuntu-latest
@@ -33,11 +45,27 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: tools/package-lock.json
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@v2
         with:
-          tool: just
-      - run: just lint
+          tool: just,cargo-deny
+      - run: npm ci --prefix tools
+      - run: just clippy
+      - run: just markdown
+      # Soft-failed on purpose: a newly published RUSTSEC advisory against a transitive
+      # dependency would otherwise turn every unrelated PR red overnight, for something no PR
+      # author can fix. The finding is still visible in the job log and annotated on the run.
+      - run: just deny-advisories
+        continue-on-error: true
+      # Hard gate: licenses, bans, and sources are fully under this repo's control, and
+      # deny.toml's allow-list is deliberately minimal so a new dependency with an unexpected
+      # license fails here rather than being absorbed silently.
+      - run: just deny-licenses
 
   docs:
     runs-on: ubuntu-latest
@@ -72,7 +100,9 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: just,nextest
-      - run: just test-all
+      # The `ci` nextest profile also writes JUnit XML to target/nextest/ci/junit.xml. Nothing
+      # consumes it yet; wiring it to Codecov Test Analytics is Phase 6.
+      - run: just test-ci
 
   coverage:
     runs-on: ubuntu-latest
@@ -95,6 +125,9 @@ jobs:
           fail_ci_if_error: false
           token: ${{ secrets.CODECOV_TOKEN }}
 
+  # Single required status check for the branch ruleset, so adding or renaming a job above never
+  # requires editing the ruleset. Matches the `required` context the repo's Protect ruleset asks
+  # for.
   required:
     runs-on: ubuntu-latest
     needs:

@@ -512,9 +512,9 @@ for free from `legal_actions` returning a singleton.
 
 ## Workspace layout
 
-```
+```text
 turnbase/
-  Cargo.toml                 # workspace root
+  Cargo.toml                  # workspace root
   crates/
     core/                     # crate `turnbase`: Game trait, ActivePlayers, RNG, Tier-2 triggers
     bots/                     # crate `turnbase-bots`: Random, minimax/alpha-beta, MCTS helpers
@@ -522,6 +522,8 @@ turnbase/
     simulator/                # crate `turnbase-simulator`: retroglyph terminal client over match
     protocol/                 # crate `turnbase-protocol`: typed request/response wire types
     session/                  # crate `turnbase-session`: Session port, LocalSession, FileSession
+    cli/                      # crate `turnbase-cli`: generic runner (`run`, `run_tui`)
+    demos/                    # crate `turnbase-demos`: in-browser WASM harness (publish = false)
   examples/                   # reference games (publish = false)
 ```
 

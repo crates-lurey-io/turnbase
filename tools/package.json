@@ -1,0 +1,20 @@
+{
+  "name": "turnbase-tools",
+  "private": true,
+  "version": "0.1.0",
+  "comments": {
+    "globs": "A bare `**` glob does not match hidden directories, so `.github/**` has to be listed explicitly or the workflow YAML would silently never be formatted or checked.",
+    "cwd": "Every script `cd ..` first so the tool runs with the repository root as CWD. This is load-bearing for markdownlint: run from tools/, it resolves .markdownlint-cli2.jsonc relative to tools/, silently ignores the root config, and lints the gitignored .matan/ and .pi-subagents/ scratch directories (28 files instead of 3).",
+    "versions": "markdownlint-cli2 has no advisory-free release in either direction: >=0.23 depends on js-yaml 5.x (GHSA-pm4m-ph32-ghv5, flow-collection parsing DoS) and <=0.22 depends on js-yaml 4.x (GHSA-mh29-5h37-fv8m prototype pollution) plus a ReDoS-affected markdown-it. Newest is chosen because all of these are denial-of-service/pollution issues in parsing UNTRUSTED YAML, and this is a dev-only CLI that only ever parses this repository's own markdown and config. `npm audit` is therefore not run in CI; it would be permanently red for a risk that is not reachable here."
+  },
+  "scripts": {
+    "format": "cd .. && prettier --write \"**/*.{md,yml,yaml,json,js,ts}\" \".github/**/*.{yml,yaml}\"",
+    "format:check": "cd .. && prettier --check \"**/*.{md,yml,yaml,json,js,ts}\" \".github/**/*.{yml,yaml}\"",
+    "lint": "cd .. && markdownlint-cli2 \"**/*.md\"",
+    "lint:fix": "cd .. && markdownlint-cli2 --fix \"**/*.md\""
+  },
+  "devDependencies": {
+    "markdownlint-cli2": "^0.23.1",
+    "prettier": "^3.9.6"
+  }
+}

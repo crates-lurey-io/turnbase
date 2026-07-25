@@ -1,0 +1,21 @@
+[store]
+dir = "target/nextest"
+
+# See `just test` / `just test-ci` in the Justfile for how these are invoked. Both pair nextest
+# with a plain `cargo test --doc`, since nextest does not run doctests
+# (https://nexte.st/docs/limitations/).
+[profile.default]
+# A failing bot search or example game shouldn't hide unrelated failures elsewhere in the
+# workspace; CI wants the full picture in one pass rather than one failure at a time.
+fail-fast = false
+# The MCTS/ISMCTS proptest suites in crates/bots are the slowest tests here by a wide margin.
+# This isn't a retry policy (these are deterministic given a seed); it just gets nextest to flag
+# a test loudly if a search ever regresses into effectively hanging.
+slow-timeout = { period = "30s", terminate-after = 4 }
+
+[profile.ci]
+fail-fast = false
+slow-timeout = { period = "30s", terminate-after = 4 }
+# Machine-readable output for Codecov Test Analytics (see the `test` job in ci.yml); local runs
+# use the default profile's human-readable summary instead.
+junit = { path = "junit.xml" }

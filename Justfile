@@ -3,21 +3,37 @@ default:
 
 # ── Formatting ───────────────────────────────────────────────────────────────
 
-format:
+rustfmt:
     cargo fmt --all -- --check
 
-fmt-fix:
+prettier:
+    @[ -d tools/node_modules ] || npm ci --prefix tools
+    npm --prefix tools run format:check
+
+markdown:
+    @[ -d tools/node_modules ] || npm ci --prefix tools
+    npm --prefix tools run lint
+
+# Auto-fix Rust + Markdown/YAML/JSON formatting.
+fmt:
     cargo fmt --all
+    @[ -d tools/node_modules ] || npm ci --prefix tools
+    npm --prefix tools run format
+
+# Check-only counterpart of `fmt` (what CI's format job runs).
+fmt-check: rustfmt prettier
 
 # ── Linting ──────────────────────────────────────────────────────────────────
 
-lint:
+clippy:
     cargo clippy --workspace --all-targets --all-features -- -D warnings
 
-lint-fix:
+clippy-fix:
     cargo clippy --workspace --all-targets --all-features --fix
 
-# ── Build ──────────────────────────────────────────────────────────────────
+lint: clippy markdown
+
+# ── Build ────────────────────────────────────────────────────────────────────
 
 compile:
     cargo check --workspace --all-targets --all-features
@@ -55,22 +71,43 @@ docs-site:
     sed -i.bak "s/__GIT_SHA__/$(git rev-parse --short HEAD 2>/dev/null || echo unknown)/g" target/doc/index.html && rm -f target/doc/index.html.bak
     rm -f target/doc/.lock
 
-# ── Test ───────────────────────────────────────────────────────────────────
+# ── Test ─────────────────────────────────────────────────────────────────────
 
+# nextest runs every test in its own process, in parallel across all of them. It does not run
+# doctests (https://nexte.st/docs/limitations/), so `test-doc` covers those separately. See
+# .config/nextest.toml for the profile config.
 test *args:
-    cargo nextest run --workspace {{args}}
+    cargo nextest run --workspace {{ args }}
 
 test-doc *args:
-    cargo test --workspace {{args}} --doc
+    cargo test --workspace {{ args }} --doc
 
 test-all:
     just test --all-features
     just test-doc --all-features
 
+# CI variant: same tests, but under the `ci` nextest profile, which additionally writes JUnit XML
+# to target/nextest/ci/junit.xml for Codecov Test Analytics (see the `test` job in ci.yml).
+test-ci:
+    cargo nextest run --workspace --all-features --profile ci
+    cargo test --workspace --all-features --doc
+
+# ── Dependencies ─────────────────────────────────────────────────────────────
+
+# Advisories are soft-failed in CI (a new RUSTSEC advisory against a transitive dep shouldn't
+# turn every unrelated PR red), while licenses/bans/sources are a hard gate.
+deny-advisories:
+    cargo deny check advisories
+
+deny-licenses:
+    cargo deny check bans licenses sources
+
+deny: deny-advisories deny-licenses
+
 # ── Coverage ─────────────────────────────────────────────────────────────────
 
 coverage *args:
-    cargo llvm-cov --workspace --open {{args}}
+    cargo llvm-cov --workspace --open {{ args }}
 
 coverage-gen:
     cargo llvm-cov --workspace --lcov --output-path lcov.info
@@ -78,9 +115,14 @@ coverage-gen:
 # ── Composite ────────────────────────────────────────────────────────────────
 
 fix:
-    just fmt-fix
-    just lint-fix
+    just fmt
+    just clippy-fix
 
-check:
-    just format
-    just lint
+# The full local gate. `compile` is deliberately not included: clippy already performs a
+# strictly-stronger typecheck than plain `cargo check`, and `test` right after does a full build,
+# so a standalone check pass between them never catches anything those two don't. `just compile`
+# stays available on its own for a fast check-only iteration loop.
+check: fmt-check lint test-all doc
+
+clean:
+    cargo clean

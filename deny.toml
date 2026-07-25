@@ -1,0 +1,37 @@
+[licenses]
+version = 2
+confidence-threshold = 0.8
+# Deliberately minimal: exactly the licenses this dependency tree actually resolves to, so a new
+# dependency carrying anything else fails loudly instead of being silently absorbed by a
+# speculatively broad allow-list. Adding an entry here should be a considered decision.
+#
+# Most of the tree is the usual `MIT OR Apache-2.0` dual license, where cargo-deny selects the
+# first allowed arm. That is why licenses visible in `cargo metadata` output do not all appear
+# here: `memchr` (`Unlicense OR MIT`), `zerocopy` (`BSD-2-Clause OR Apache-2.0 OR MIT`), and
+# `r-efi` (`MIT OR Apache-2.0 OR LGPL-2.1-or-later`, and UEFI-target only via `getrandom`
+# regardless) all resolve to MIT and need no entry of their own.
+#
+# `Unicode-3.0` is the exception that does need listing: `unicode-ident` is
+# `(MIT OR Apache-2.0) AND Unicode-3.0`, and the AND makes it mandatory rather than selectable.
+allow = [
+  "Apache-2.0",
+  "MIT",
+  "Unicode-3.0",
+]
+
+[advisories]
+version = 2
+# No ignores today. Add one only with a comment explaining why the advisory is unreachable in
+# this workspace and what upstream change would let it be removed again.
+ignore = []
+
+[bans]
+# Duplicate versions are a fact of life in a tree this size (`r-efi` is already present at both
+# 5.x and 6.x via different `getrandom` versions) and deduplicating them is not this project's
+# job. Revisit if a duplicate ever costs real build time or binary size.
+multiple-versions = "allow"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "warn"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

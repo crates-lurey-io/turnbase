@@ -8,6 +8,11 @@ concurrency:
   group: deploy
   cancel-in-progress: false
 
+# Least privilege by default; the deploy job below raises it to the pages/id-token scopes that
+# actions/deploy-pages actually needs.
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
 

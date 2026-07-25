@@ -1,6 +1,6 @@
 # turnbase
 
-[![CI](https://github.com/crates-lurey-io/turnbase/actions/workflows/test.yml/badge.svg)](https://github.com/crates-lurey-io/turnbase/actions/workflows/test.yml)
+[![CI](https://github.com/crates-lurey-io/turnbase/actions/workflows/ci.yml/badge.svg)](https://github.com/crates-lurey-io/turnbase/actions/workflows/ci.yml)
 [![Docs](https://github.com/crates-lurey-io/turnbase/actions/workflows/docs.yml/badge.svg)](https://crates-lurey-io.github.io/turnbase/)
 [![codecov](https://codecov.io/gh/crates-lurey-io/turnbase/graph/badge.svg)](https://codecov.io/gh/crates-lurey-io/turnbase)
 
