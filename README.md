@@ -24,11 +24,42 @@ it.
 | [`crates/protocol`](./crates/protocol) | Typed request/response wire types. Published as `turnbase-protocol`. |
 | [`crates/session`](./crates/session) | The `Session` port: in-memory and file-backed hosts. Published as `turnbase-session`. |
 | [`crates/cli`](./crates/cli) | Generic command-line runner (`run`, `run_tui`). Published as `turnbase-cli`. |
-| [`examples/`](./examples) | Standalone reference games, each its own crate: tic-tac-toe, coup, high-card, rock-paper-scissors, minion-battle, risk. |
+| [`examples/`](./examples) | Ten standalone reference games, each its own crate (see the table below). Not published. |
+| [`crates/demos`](./crates/demos) | WASM harness that runs each reference game in the browser via `retroglyph-terminal-wasm`. Not published. |
 
 The layer above the core (sessions, hosts, headless/interactive/networked
 clients) is described in
 [`docs/design/sessions-and-transports.md`](./docs/design/sessions-and-transports.md).
+
+Only the seven `crates/*` libraries are published to crates.io and shipped in
+the [API docs](https://crates-lurey-io.github.io/turnbase/crates/); the example
+games and the demo harness (`publish = false`) are not.
+
+## Reference games
+
+Ten games, each its own crate with a one-line `main` over `turnbase-cli`.
+They double as a pressure test: every row picks at a different corner of the
+[`Game`](./crates/core/src/game.rs) trait.
+
+| Game | Tier | What it exercises |
+| --- | --- | --- |
+| [`tic_tac_toe`](./examples/tic_tac_toe) | 0 | The whole trait at its smallest: perfect information, no chance, no triggers. |
+| [`high_card`](./examples/high_card) | 0 | Committed chance (`PlayerId::CHANCE`) and hidden information at minimum size. |
+| [`rock_paper_scissors`](./examples/rock_paper_scissors) | 0 | Simultaneous, secret moves (both seats active at once). |
+| [`coup`](./examples/coup) | 1 | Bluffing over hidden roles with response windows; implements `Determinize`, so ISMCTS plays it. |
+| [`minion_battle`](./examples/minion_battle) | 1 | Moves that cascade through triggered effects (deathrattles enqueue more). |
+| [`risk`](./examples/risk) | 1 | Spatial state on a map graph and a long multi-phase turn. |
+| [`blackjack`](./examples/blackjack) | 1 | A best-of-N match against a scripted dealer, with a bespoke custom TUI (not the shared dashboard). |
+| [`hanabi`](./examples/hanabi) | 1 | Cooperative play whose visibility rule is the exact inverse of the default (you see everyone's hand but your own). |
+| [`woodland`](./examples/woodland) | 1 | Two asymmetric factions (the enum-of-enums action convention) contesting a clearing ring. |
+| [`spire_run`](./examples/spire_run) | 1 | A solo deckbuilding run: phase composition with a nested combat mini-game. |
+
+Tier 0 is a `Game` impl plus serde derives, with a text `play`. Tier 1 adds a
+[`PrintableGame`](./crates/simulator/src/ui.rs) impl to upgrade `play` to the
+retroglyph dashboard (on by default; build `--no-default-features --features
+cli` for text-only). Blackjack is the exception that proves a game can ship its
+own terminal UI: it drives the `Simulator` through a hand-written `App` instead
+of the shared dashboard.
 
 ## Quick start
 
@@ -66,7 +97,7 @@ with no extra code:
 # Watch two bots play tic-tac-toe:
 cargo run -p tic_tac_toe -- self-play
 
-# Play Coup yourself (seat 0) against three bots, in a terminal dashboard:
+# Play Coup yourself against bots, in a terminal dashboard:
 cargo run -p coup -- play
 
 # Drive a game headlessly, one action per process (agent- or script-friendly):
@@ -75,18 +106,30 @@ cargo run -p tic_tac_toe -- act --session game.json --player 0 --action 4
 cargo run -p tic_tac_toe -- query --session game.json --player 1
 ```
 
-Tic-tac-toe is "Tier 0": a `Game` impl plus serde derives, no rendering code,
-and its binary links no terminal UI. Coup is "Tier 1": it adds a `PrintableGame`
-impl to upgrade `play` to the retroglyph dashboard. Everything else is identical
-between them.
+Every game takes the same subcommands (`new`, `query`, `act`, `self-play`,
+`play`). Some games do not converge under uniform-random `self-play` (Risk, for
+one), which the runner reports honestly rather than looping forever.
 
-All six reference games run the same way (`cargo run -p <game> -- <command>`):
-`tic_tac_toe`, `coup`, `high_card`, `rock_paper_scissors`, `minion_battle`, and
-`risk`. `coup`, `risk`, and `minion_battle` are Tier 1 (a `PrintableGame`
-dashboard, on by default; build `--no-default-features --features cli` for
-text-only). `tic_tac_toe`, `high_card`, and `rock_paper_scissors` are Tier 0.
-Some games do not converge under uniform-random `self-play` (Risk, for one),
-which the runner reports honestly rather than looping forever.
+A Tier 1 `play` opens the interactive dashboard, which is a real session
+controller, not just an auto-runner. Press `c` for the setup modal to make any
+seat Human or pick its AI type (Random, MCTS, or ISMCTS where the game supports
+it); `m` toggles Auto/Step, `Space` single-steps, `+`/`-` change speed, `p`
+pauses, and `r` restarts with a fresh seed. A human seat plays through the
+on-screen action menu, and the status bar lists the controls.
+
+## Live demos and docs
+
+Every push to `main` publishes to <https://crates-lurey-io.github.io/turnbase/>:
+
+- [Interactive demos](https://crates-lurey-io.github.io/turnbase/demos/) of
+  each dashboard game, running the exact same `App` as the native client but
+  compiled to WebAssembly and rendered into `xterm.js`. They self-play out of
+  the box; the same setup modal and controls work in the browser.
+- [API docs](https://crates-lurey-io.github.io/turnbase/crates/) for the seven
+  published libraries, with per-crate `llms.txt` for coding assistants.
+- A [coverage report](https://crates-lurey-io.github.io/turnbase/coverage/).
+
+Build the whole site locally with `just docs-site`.
 
 ## Contributing
 
