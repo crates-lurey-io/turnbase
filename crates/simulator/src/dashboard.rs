@@ -10,7 +10,8 @@
 //! [`SessionApp`]: crate::SessionApp
 
 use retroglyph_core::grid::Rect;
-use retroglyph_core::{Backend, Terminal};
+use retroglyph_core::{Backend, Style, Terminal};
+use retroglyph_widgets::{Panel, Scrollbar, Theme, Widget};
 
 use crate::PrintableGame;
 
@@ -120,31 +121,142 @@ pub fn print_rows<B: Backend>(
     }
 }
 
+/// Draws a themed, titled border in `rect` and returns the interior content
+/// rect (the area inside the border).
+///
+/// The interior is deliberately left on the terminal's own background rather
+/// than filled with the theme's panel color: a game draws its viewport (and
+/// the dashboard prints its rows) with the default background, so a fill would
+/// only show through on the cells nothing was drawn on, giving a patchy look.
+/// A border-only frame keeps every cell on one consistent background.
+///
+/// Returns a degenerate (possibly zero-sized) inner rect when `rect` is too
+/// small to hold a border; the row/menu helpers all clip to it safely.
+pub fn panel<B: Backend>(term: &mut Terminal<B>, rect: Rect, theme: Theme, title: &str) -> Rect {
+    if rect.width() >= 2 && rect.height() >= 2 {
+        Panel::new()
+            .border_style(Style::new().fg(theme.border))
+            .render(rect, term);
+        if !title.is_empty() && rect.width() > 4 {
+            // Overwrite the top border with an inset, padded title in the
+            // accent color, one cell in from the left corner.
+            let max = usize::from(rect.width().saturating_sub(2));
+            let label: String = format!(" {title} ").chars().take(max).collect();
+            term.reset_style().fg(theme.accent);
+            term.print(rect.left().saturating_add(1), rect.top(), &label);
+            term.reset_style();
+        }
+    }
+    Rect::new(
+        rect.left().saturating_add(1),
+        rect.top().saturating_add(1),
+        rect.width().saturating_sub(2),
+        rect.height().saturating_sub(2),
+    )
+}
+
+/// Draws the actions panel frame and returns its interior rect for the caller
+/// to fill with a menu or a status line.
+///
+/// `position`, when given, is shown as `selected/total` in the title so a
+/// scrolled menu still says how many actions there are.
+pub fn actions_panel<B: Backend>(
+    term: &mut Terminal<B>,
+    rect: Rect,
+    theme: Theme,
+    position: Option<(usize, usize)>,
+) -> Rect {
+    let title = match position {
+        Some((selected, total)) => format!("Actions {selected}/{total}"),
+        None => "Actions".to_owned(),
+    };
+    panel(term, rect, theme, &title)
+}
+
+/// Draws the log panel: a themed frame, the tail of `log` windowed by
+/// `offset` (0 pins to the newest line, each increment scrolls one line back),
+/// and a one-cell [`Scrollbar`] on the right edge once there is more history
+/// than fits.
+///
+/// Returns the number of visible log rows, so an interactive caller can clamp
+/// its scroll offset and size a page jump.
+pub fn draw_log<B: Backend>(
+    log: &[String],
+    term: &mut Terminal<B>,
+    rect: Rect,
+    theme: Theme,
+    offset: usize,
+) -> usize {
+    let title = if offset > 0 { "Log (scrolled)" } else { "Log" };
+    let inner = panel(term, rect, theme, title);
+    let visible = usize::from(inner.height());
+    if visible == 0 || inner.width() == 0 {
+        return visible;
+    }
+
+    let total = log.len();
+    let max_back = total.saturating_sub(visible);
+    let start = max_back.saturating_sub(offset.min(max_back));
+
+    let has_bar = total > visible;
+    if has_bar {
+        let bar = Rect::new(
+            inner.right().saturating_sub(1),
+            inner.top(),
+            1,
+            inner.height(),
+        );
+        Scrollbar::new(total, visible)
+            .offset(start)
+            .theme(theme)
+            .render(bar, term);
+    }
+    let text = if has_bar {
+        Rect::new(
+            inner.left(),
+            inner.top(),
+            inner.width().saturating_sub(1),
+            inner.height(),
+        )
+    } else {
+        inner
+    };
+
+    let end = (start + visible).min(total);
+    print_rows(term, text, 0, log[start..end].iter().cloned());
+    visible
+}
+
 /// Draws the viewport, the stats panel, and the log strip -- the parts every
-/// dashboard renders identically from one seat's `view`.
+/// dashboard renders identically from one seat's `view`, each in a themed
+/// titled frame. `log_offset` scrolls the log back through history (0 pins to
+/// the newest line); the return value is the number of visible log rows, for
+/// an interactive caller to clamp scrolling against.
 pub fn draw_board_stats_log<G, B>(
     game: &G,
     view: &G::View,
     log: &[String],
     term: &mut Terminal<B>,
     layout: &Layout,
-) where
+    theme: Theme,
+    log_offset: usize,
+) -> usize
+where
     G: PrintableGame,
     B: Backend,
 {
-    game.draw_viewport(view, term, layout.viewport);
+    let board = panel(term, layout.viewport, theme, "");
+    game.draw_viewport(view, term, board);
 
-    term.print(layout.stats.left(), layout.stats.top(), "-- stats --");
+    let stats = panel(term, layout.stats, theme, "Stats");
     print_rows(
         term,
-        layout.stats,
-        1,
+        stats,
+        0,
         game.get_stats(view)
             .into_iter()
             .map(|(key, value)| format!("{key}: {value}")),
     );
 
-    let capacity = usize::from(layout.log.height());
-    let start = log.len().saturating_sub(capacity);
-    print_rows(term, layout.log, 0, log[start..].iter().cloned());
+    draw_log(log, term, layout.log, theme, log_offset)
 }
