@@ -6,8 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ## [0.1.1+turnbase-bots](https://github.com/crates-lurey-io/turnbase/compare/turnbase-bots-v0.1.0...turnbase-bots-v0.1.1) - 2026-07-26
 
-**Full Changelog**: https://github.com/crates-lurey-io/turnbase/compare/turnbase-bots-v0.1.0...turnbase-bots-v0.1.1
-
+**Full Changelog**:
+https://github.com/crates-lurey-io/turnbase/compare/turnbase-bots-v0.1.0...turnbase-bots-v0.1.1
 
 ## [0.1.0+turnbase-bots](https://github.com/crates-lurey-io/turnbase/compare/turnbase-bots-v0.0.0-reserved...turnbase-bots-v0.1.0) - 2026-07-25
 

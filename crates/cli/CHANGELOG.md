@@ -6,8 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ## [0.1.1+turnbase-cli](https://github.com/crates-lurey-io/turnbase/compare/turnbase-cli-v0.1.0...turnbase-cli-v0.1.1) - 2026-07-26
 
-**Full Changelog**: https://github.com/crates-lurey-io/turnbase/compare/turnbase-cli-v0.1.0...turnbase-cli-v0.1.1
-
+**Full Changelog**:
+https://github.com/crates-lurey-io/turnbase/compare/turnbase-cli-v0.1.0...turnbase-cli-v0.1.1
 
 ## [0.1.0+turnbase-cli](https://github.com/crates-lurey-io/turnbase/releases/tag/turnbase-cli-v0.1.0) - 2026-07-25
 
