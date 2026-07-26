@@ -56,8 +56,8 @@ best.expect("a fully expanded node has children")
 
 Bare `.unwrap()` is fine in `#[cfg(test)]` code and doctests, where a panic _is_ the failure report.
 This is close to universal in the current tree: every bare `unwrap()` in `crates/*/src` is inside a
-test module or a doc example, except two in `crates/bots/src/ismcts.rs` that should be given
-messages when next touched.
+test module or a doc example, except one in `crates/bots/src/ismcts.rs` that should be given a
+message when next touched.
 
 **Panicking is acceptable only for genuine programmer error**, and `apply` is the notable case: it
 documents that it assumes a legal action, because checking belongs in `apply_cloned` and search
