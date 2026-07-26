@@ -1,7 +1,7 @@
 [package]
 name = "turnbase-session"
 description = "The Session port for Turnbase: in-memory and file-backed hosts behind one request/response interface"
-version = "0.1.0"
+version = "0.1.1"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true

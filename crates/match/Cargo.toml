@@ -1,7 +1,7 @@
 [package]
 name = "turnbase-match"
 description = "Turn-loop orchestration for the Turnbase engine: seat agents and a match stepper"
-version = "0.1.0"
+version = "0.1.1"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
