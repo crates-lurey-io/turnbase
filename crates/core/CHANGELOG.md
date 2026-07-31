@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 <!-- generated from commit messages; several markdownlint rules fight that -->
 <!-- markdownlint-disable line-length no-bare-urls ul-style emphasis-style no-space-in-emphasis no-multiple-blanks -->
 
+## [0.1.1+turnbase](https://github.com/crates-lurey-io/turnbase/compare/turnbase-v0.1.0...turnbase-v0.1.1) - 2026-07-26
+
+### Documentation
+
+- [25f7b31](https://github.com/crates-lurey-io/turnbase/commit/25f7b313bf41c8d175f1dc26609e8e354c9f4b6b)
+  _(core)_ Add the 0.1.0 changelog dropped during the release bootstrap by `@matanlurey` in
+  [#38](https://github.com/crates-lurey-io/turnbase/pull/38)
+
+**Full Changelog**:
+https://github.com/crates-lurey-io/turnbase/compare/turnbase-v0.1.0...turnbase-v0.1.1
+
 ## [0.1.0+turnbase](https://github.com/crates-lurey-io/turnbase/compare/turnbase-v0.0.0-reserved...turnbase-v0.1.0) - 2026-07-25
 
 ### Features

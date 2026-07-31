@@ -828,7 +828,7 @@ dependencies = [
 
 [[package]]
 name = "turnbase"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -836,7 +836,7 @@ dependencies = [
 
 [[package]]
 name = "turnbase-bots"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "coup",
  "high_card",
@@ -847,7 +847,7 @@ dependencies = [
 
 [[package]]
 name = "turnbase-cli"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "clap",
  "log",
@@ -883,7 +883,7 @@ dependencies = [
 
 [[package]]
 name = "turnbase-match"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "log",
  "turnbase",
@@ -892,7 +892,7 @@ dependencies = [
 
 [[package]]
 name = "turnbase-protocol"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -900,7 +900,7 @@ dependencies = [
 
 [[package]]
 name = "turnbase-session"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -911,7 +911,7 @@ dependencies = [
 
 [[package]]
 name = "turnbase-simulator"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "retroglyph-core",
  "retroglyph-crossterm",
