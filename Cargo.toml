@@ -73,9 +73,9 @@ turnbase-cli = { path = "crates/cli", version = "0.1.1", default-features = fals
 # retroglyph: one upstream workspace, released together. Bump these as a set, never individually --
 # retroglyph-crossterm 0.1.3 requires retroglyph-core 0.3, so a patch bump of one drags a breaking
 # change of the other. .github/dependabot.yml groups them for the same reason.
-retroglyph-core = "0.3"
-retroglyph-widgets = "0.3"
-retroglyph-crossterm = "0.1"
+retroglyph-core = "0.4"
+retroglyph-widgets = "0.4"
+retroglyph-crossterm = "0.2"
 retroglyph-terminal-wasm = "0.1"
 
 # Third-party.
