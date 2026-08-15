@@ -7,9 +7,12 @@ name = "alpha-blend"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a4892e43308b64811b6c31ff2134c24c1be4df5762b0ecf6689417b1f973b30b"
-dependencies = [
- "libm",
-]
+
+[[package]]
+name = "alpha-blend"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3359e1d059f5057028ec171004e0560f5c431d1e72019c06c8e92f675e715e65"
 
 [[package]]
 name = "anstream"
@@ -92,7 +95,7 @@ checksum = "b4388bee8683e3d04af747c73422af53102d2bd24d9eadb6cbc100baef4b43f8"
 name = "blackjack"
 version = "0.1.0"
 dependencies = [
- "retroglyph-core",
+ "retroglyph-core 0.7.1",
  "retroglyph-crossterm",
  "serde",
  "turnbase",
@@ -173,7 +176,7 @@ dependencies = [
 name = "coup"
 version = "0.1.0"
 dependencies = [
- "retroglyph-core",
+ "retroglyph-core 0.7.1",
  "serde",
  "turnbase",
  "turnbase-bots",
@@ -233,9 +236,12 @@ name = "gem"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "107804c8574f8cf41bd25bcec6e27a0f22ba1e4c11254b7b2cf9d68218acf85d"
-dependencies = [
- "libm",
-]
+
+[[package]]
+name = "gem"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "632d1471f6df9612f21c66df70862da3df9d9adf51cbd9ea46b1d3d1f74d2097"
 
 [[package]]
 name = "getrandom"
@@ -266,14 +272,23 @@ version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0523031da57093739acabeedd9b771e1657b16a82468c885497eb98bfc76abf0"
 dependencies = [
- "ixy",
+ "ixy 0.6.1",
+]
+
+[[package]]
+name = "grixy"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0b80c60dce5b0e1772297337609f0d9a35b1d574d9929da86288ca9e5f225b37"
+dependencies = [
+ "ixy 0.7.1",
 ]
 
 [[package]]
 name = "hanabi"
 version = "0.1.0"
 dependencies = [
- "retroglyph-core",
+ "retroglyph-core 0.7.1",
  "serde",
  "turnbase",
  "turnbase-bots",
@@ -314,6 +329,18 @@ name = "ixy"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "947712713bffab262e4ef564ace3eadecc59d041244c566bcc2e7d1d43dff5cf"
+
+[[package]]
+name = "ixy"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "11af8cf1d4cbebcb4c0ae4321aae059992cbf60e6652c224bc08128ae205a1b0"
+
+[[package]]
+name = "ixy"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "75bd1cd4bce67bde532885c647a9943170d25c9d17f459e200957434612612eb"
 
 [[package]]
 name = "js-sys"
@@ -374,7 +401,7 @@ checksum = "88904434abc2901f197fe8cc55f0445e7ded921dba5911dad2e2b39b48e663c4"
 name = "minion_battle"
 version = "0.1.0"
 dependencies = [
- "retroglyph-core",
+ "retroglyph-core 0.7.1",
  "serde",
  "turnbase",
  "turnbase-bots",
@@ -561,12 +588,26 @@ version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "299e4701e694637284c72d4567a337167cc7ca116b3c7fcc051c783b91d03df2"
 dependencies = [
- "alpha-blend",
+ "alpha-blend 0.2.2",
  "bitflags",
- "gem",
- "grixy",
- "ixy",
+ "gem 0.1.1",
+ "grixy 0.6.1",
+ "ixy 0.6.1",
  "libm",
+ "unicode-width",
+]
+
+[[package]]
+name = "retroglyph-core"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c2cd8de8c64148b10c27b17c04fd8c115f9ee84e56947324eaa860fc7942a1ad"
+dependencies = [
+ "alpha-blend 0.3.0",
+ "bitflags",
+ "gem 0.2.2",
+ "grixy 0.7.0",
+ "ixy 0.8.0",
  "unicode-segmentation",
  "unicode-width",
 ]
@@ -578,7 +619,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b4684d6903ccc418dfd65b7810a6f6b9b49e6bcc64ded013ca097963f5041900"
 dependencies = [
  "crossterm",
- "retroglyph-core",
+ "retroglyph-core 0.3.1",
  "retroglyph-terminal",
 ]
 
@@ -588,7 +629,7 @@ version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "837d17df9672d2e850d824cb7feb1612b78a4c8b8e984d78d99ebd4e47ea5656"
 dependencies = [
- "retroglyph-core",
+ "retroglyph-core 0.3.1",
 ]
 
 [[package]]
@@ -598,26 +639,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f19d59504338879a5f51b37d6b38533174895cac0728f2284157641d086fe412"
 dependencies = [
  "log",
- "retroglyph-core",
+ "retroglyph-core 0.3.1",
  "retroglyph-terminal",
  "wasm-bindgen",
 ]
 
 [[package]]
 name = "retroglyph-widgets"
-version = "0.3.1"
+version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "13a1f693e6784e76988e1d1d79f0bea197cab3f4ac684a2d3d16551ac1df5047"
-dependencies = [
- "retroglyph-core",
- "unicode-width",
-]
+checksum = "564fd733a403a9e61685f069391e3b743e28737250ea5a1460ad01eac2a17c57"
 
 [[package]]
 name = "risk"
 version = "0.1.0"
 dependencies = [
- "retroglyph-core",
+ "retroglyph-core 0.7.1",
  "serde",
  "turnbase",
  "turnbase-bots",
@@ -768,7 +805,7 @@ checksum = "8ed6a63f02c8539c91a8685a86f4099661ba3da017932f6ebbea6de3f0fa7c90"
 name = "spire_run"
 version = "0.1.0"
 dependencies = [
- "retroglyph-core",
+ "retroglyph-core 0.7.1",
  "serde",
  "turnbase",
  "turnbase-bots",
@@ -869,7 +906,7 @@ dependencies = [
  "console_error_panic_hook",
  "coup",
  "minion_battle",
- "retroglyph-core",
+ "retroglyph-core 0.7.1",
  "retroglyph-terminal-wasm",
  "risk",
  "turnbase",
@@ -913,7 +950,7 @@ dependencies = [
 name = "turnbase-simulator"
 version = "0.1.1"
 dependencies = [
- "retroglyph-core",
+ "retroglyph-core 0.7.1",
  "retroglyph-crossterm",
  "retroglyph-widgets",
  "turnbase",
@@ -1150,7 +1187,7 @@ checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
 name = "woodland"
 version = "0.1.0"
 dependencies = [
- "retroglyph-core",
+ "retroglyph-core 0.7.1",
  "serde",
  "turnbase",
  "turnbase-bots",
